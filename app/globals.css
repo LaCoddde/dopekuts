@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Black Color Scheme */
+  --color-black-50: #f6f6f6;
+  --color-black-100: #e7e7e7;
+  --color-black-200: #d1d1d1;
+  --color-black-300: #b0b0b0;
+  --color-black-400: #888888;
+  --color-black-500: #6d6d6d;
+  --color-black-600: #5d5d5d;
+  --color-black-700: #4f4f4f;
+  --color-black-800: #454545;
+  --color-black-900: #3d3d3d;
+  --color-black-950: #000000;
+
+  /* Theme Variables */
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 0 0% 14.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --ring: 0 0% 83.1%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 96.5%;
+  --card: 0 0% 3.9%;
+  --card-foreground: 0 0% 96.5%;
+  --popover: 0 0% 3.9%;
+  --popover-foreground: 0 0% 96.5%;
+  --primary: 0 0% 96.5%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 96.5%;
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 0 0% 14.9%;
+  --accent-foreground: 0 0% 96.5%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --ring: 0 0% 83.1%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-mono;
+    font-family: 'Roboto Mono', monospace;
+  }
+}
+
+@layer components {
+  .section-padding {
+    @apply px-4 md:px-8 lg:px-16;
+  }
+  
+  .container-max {
+    @apply max-w-7xl mx-auto;
+  }
+  
+  .fade-in {
+    animation: fadeIn 0.6s ease-in-out;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Phone Input Styling */
+  .phone-input .PhoneInputInput {
+    background-color: rgb(55 65 81);
+    border: 1px solid rgb(75 85 99);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    width: 100%;
+  }
+  
+  .phone-input .PhoneInputInput:focus {
+    outline: none;
+    border-color: white;
+    box-shadow: 0 0 0 1px white;
+  }
+  
+  .phone-input .PhoneInputCountrySelect {
+    background-color: rgb(55 65 81);
+    border: 1px solid rgb(75 85 99);
+    color: white;
+    border-radius: 0.375rem;
+    margin-right: 0.5rem;
+  }
+  
+  .phone-input .PhoneInputCountrySelect:focus {
+    outline: none;
+    border-color: white;
+  }
+  
+  .phone-input .PhoneInputCountrySelectArrow {
+    color: rgb(156 163 175);
+  }
+}
