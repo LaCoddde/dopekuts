@@ -19,7 +19,7 @@ export function Navigation() {
   ];
 
   return (
-    <nav className="bg-black/95 backdrop-blur-sm shadow-lg border-b border-gray-800 sticky top-0 z-50">
+    <nav className="bg-white/95 backdrop-blur-sm shadow-lg border-b border-gray-200 sticky top-0 z-50">
       <div className="container-max section-padding">
         <div className="flex justify-between items-center h-20">
           {/* Logo */}
@@ -39,10 +39,10 @@ export function Navigation() {
               <Link
                 key={item.name}
                 href={item.href}
-                className="text-gray-300 hover:text-white transition-colors duration-200 font-medium text-sm uppercase tracking-wide relative group"
+                className="text-gray-600 hover:text-black transition-colors duration-200 font-medium text-sm uppercase tracking-wide relative group"
               >
                 {item.name}
-                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-white transition-all duration-200 group-hover:w-full"></span>
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-black transition-all duration-200 group-hover:w-full"></span>
               </Link>
             ))}
           </div>
@@ -52,7 +52,7 @@ export function Navigation() {
             <Button asChild>
               <Link
                 href="/book"
-                className="inline-block bg-white text-black hover:bg-gray-200 hover:text-black font-semibold px-6 py-2 rounded-full transition-all duration-200 hover:scale-105"
+                className="inline-block bg-black text-white hover:bg-gray-800 hover:text-white font-semibold px-6 py-2 rounded-full transition-all duration-200 hover:scale-105"
               >
                 Book Appointment
               </Link>
@@ -63,7 +63,7 @@ export function Navigation() {
           <div className="md:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="text-gray-300 hover:text-white transition-colors duration-200 p-2"
+              className="text-gray-600 hover:text-black transition-colors duration-200 p-2"
             >
               {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
@@ -72,23 +72,23 @@ export function Navigation() {
 
         {/* Mobile Navigation */}
         {isOpen && (
-          <div className="md:hidden py-6 border-t border-gray-800 bg-black/95 backdrop-blur-sm">
+          <div className="md:hidden py-6 border-t border-gray-200 bg-white/95 backdrop-blur-sm">
             <div className="flex flex-col space-y-4">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className="text-gray-300 hover:text-white transition-colors duration-200 font-medium text-sm uppercase tracking-wide py-2"
+                  className="text-gray-600 hover:text-black transition-colors duration-200 font-medium text-sm uppercase tracking-wide py-2"
                   onClick={() => setIsOpen(false)}
                 >
                   {item.name}
                 </Link>
               ))}
-              <div className="pt-4 border-t border-gray-800">
+              <div className="pt-4 border-t border-gray-200">
                 <Button asChild>
                   <Link
                     href="/book"
-                    className="inline-block w-full bg-white text-black hover:bg-gray-200 hover:text-black font-semibold py-3 rounded-full transition-all duration-200"
+                    className="inline-block w-full bg-black text-white hover:bg-gray-800 hover:text-white font-semibold py-3 rounded-full transition-all duration-200"
                   >
                     Book Appointment
                   </Link>
