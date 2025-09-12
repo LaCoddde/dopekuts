@@ -36,33 +36,33 @@ const services = [
 
 export function Services() {
   return (
-    <section className="py-24 bg-gray-900">
+    <section className="py-24 bg-gray-100">
       <div className="container-max section-padding">
         <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+          <h2 className="text-4xl md:text-5xl font-bold text-black mb-6">
             Our Services
           </h2>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+          <p className="text-xl text-gray-700 max-w-2xl mx-auto">
             Professional grooming services delivered by master barbers with years of experience
           </p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {services.map((service, index) => (
-            <Card key={index} className="hover-lift cursor-pointer bg-gray-800 border-gray-700">
+            <Card key={index} className="hover-lift cursor-pointer bg-white border-gray-300">
               <CardHeader className="text-center">
-                <div className="mx-auto mb-4 p-3 bg-white rounded-full w-fit">
-                  <service.icon className="h-8 w-8 text-black" />
+                <div className="mx-auto mb-4 p-3 bg-black rounded-full w-fit">
+                  <service.icon className="h-8 w-8 text-white" />
                 </div>
-                <CardTitle className="text-xl font-bold text-white">{service.title}</CardTitle>
+                <CardTitle className="text-xl font-bold text-black">{service.title}</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <CardDescription className="text-gray-300 mb-4 min-h-[3rem]">
+                <CardDescription className="text-gray-700 mb-4 min-h-[3rem]">
                   {service.description}
                 </CardDescription>
                 <div className="space-y-2">
-                  <div className="text-2xl font-bold text-white">{service.price}</div>
-                  <div className="text-sm text-gray-400">{service.duration}</div>
+                  <div className="text-2xl font-bold text-black">{service.price}</div>
+                  <div className="text-sm text-gray-600">{service.duration}</div>
                 </div>
               </CardContent>
             </Card>
