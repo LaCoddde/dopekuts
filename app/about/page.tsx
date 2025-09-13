@@ -1,4 +1,13 @@
+// dopekuts/app/about/page.tsx
+import Image from 'next/image';
+
 export default function About() {
+  const barbers = [
+    { name: 'Le Roy', role: 'Master Barber & Owner', experience: '15+ years', image: '/barber2.png' },
+    { name: 'Chuks Pro', role: 'Senior Barber', experience: '8+ years', image: '/barber1.png' },
+    { name: 'Gabriel Taylor', role: 'Barber Stylist', experience: '5+ years', image: '/barber3.png' },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-900 py-16">
       <div className="container-max section-padding">
@@ -14,13 +23,13 @@ export default function About() {
             <div>
               <h2 className="text-3xl font-bold text-white mb-6">Our Story</h2>
               <p className="text-gray-300 mb-6 leading-relaxed">
-                What started as a small neighborhood barbershop has grown into the city's most trusted 
-                destination for premium men's grooming. Our founder, Marcus Johnson, began cutting hair 
+                What started as a small neighborhood barbershop has grown into the city's most trusted
+                destination for premium men's grooming. Our founder, Marcus Johnson, began cutting hair
                 at age 16 and has dedicated his life to perfecting the art of barbering.
               </p>
               <p className="text-gray-300 mb-6 leading-relaxed">
-                Today, our team of master barbers combines traditional techniques with modern styling 
-                to deliver exceptional results. We believe every client deserves personalized attention 
+                Today, our team of master barbers combines traditional techniques with modern styling
+                to deliver exceptional results. We believe every client deserves personalized attention
                 and a grooming experience that exceeds expectations.
               </p>
               <p className="text-gray-300 leading-relaxed">
@@ -32,7 +41,7 @@ export default function About() {
               <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
                 <h3 className="text-xl font-bold text-white mb-4">Our Mission</h3>
                 <p className="text-gray-300">
-                  To provide exceptional grooming services that enhance our clients' confidence 
+                  To provide exceptional grooming services that enhance our clients' confidence
                   and style while creating a welcoming community space.
                 </p>
               </div>
@@ -53,19 +62,18 @@ export default function About() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-6">Meet Our Barbers</h2>
             <p className="text-gray-300 mb-12">Skilled professionals dedicated to your style</p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {[
-                { name: 'Le Roy', role: 'Master Barber & Owner', experience: '15+ years' },
-                { name: 'Chuks Pro', role: 'Senior Barber', experience: '8+ years' },
-                { name: 'Gabriel Taylor', role: 'Barber Stylist', experience: '5+ years' }
-              ].map((barber, index) => (
-                <div key={index} className="text-center">
-                  <div className="w-48 h-48 bg-gray-700 rounded-lg mx-auto mb-4">
-                    <img
-                      src={`https://images.pexels.com/photos/${1319460 + index}/pexels-photo-${1319460 + index}.jpeg?auto=compress&cs=tinysrgb&w=400`}
-                      alt={barber.name}
-                      className="w-full h-full object-cover rounded-lg"
+              {barbers.map((barber, index) => (
+                <div key={barber.name} className="text-center">
+                  <div className="w-48 h-48 bg-gray-700 rounded-lg mx-auto mb-4 overflow-hidden relative">
+                    <Image
+                      src={barber.image}
+                      alt={`Photo of ${barber.name}`}
+                      fill
+                      sizes="(max-width: 768px) 192px, 192px"
+                      className="object-cover"
+                      priority={index === 0}
                     />
                   </div>
                   <h3 className="text-xl font-bold text-white mb-2">{barber.name}</h3>
