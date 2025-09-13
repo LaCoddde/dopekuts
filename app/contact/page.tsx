@@ -1,3 +1,4 @@
+// dopekuts/app/contact/page.tsx
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -166,12 +167,15 @@ export default function Contact() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <MapPin className="h-12 w-12 mx-auto mb-4" />
-                  <p>Interactive Map Coming Soon</p>
-                  <p className="text-sm">Google Maps integration will be added here</p>
-                </div>
+              <div className="aspect-video w-full rounded-lg overflow-hidden bg-gray-700">
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2906.697046113586!2d-79.88106318824609!3d43.236811079141766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xa78622274e13fef1%3A0xe76daa437e63a473!2sElite%20Barber!5e0!3m2!1sen!2sca!4v1757799419684!5m2!1sen!2sca"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  allowFullScreen
+                  className="w-full h-full"
+                  style={{ border: 0 }}
+                />
               </div>
             </CardContent>
           </Card>
