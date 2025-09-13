@@ -31,9 +31,9 @@ export default function Contact() {
               </CardHeader>
               <CardContent>
                 <p className="text-gray-300 mb-4">
-                  123 Main Street<br />
-                  Downtown District<br />
-                  City, State 12345
+                  646 Upper James Street<br />
+                  Hamilton ON<br />
+                  L9C 2Z2
                 </p>
                 <Button variant="outline" asChild>
                   <a 
@@ -55,7 +55,7 @@ export default function Contact() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-300 mb-4">(555) 123-4567</p>
+                <p className="text-gray-300 mb-4">(365) 323-3680</p>
                 <p className="text-sm text-gray-400">
                   Call us to book an appointment or ask any questions
                 </p>
@@ -162,7 +162,7 @@ export default function Contact() {
             <CardHeader>
               <CardTitle className="text-white">Find Us</CardTitle>
               <CardDescription className="text-gray-300">
-                Located in the heart of downtown, easy to find and plenty of parking available.
+                Located in the heart of the city, easy to find and plenty of parking available.
               </CardDescription>
             </CardHeader>
             <CardContent>
