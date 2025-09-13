@@ -37,12 +37,12 @@ export function BookingCTA() {
             <div className="text-center">
               <MapPin className="h-8 w-8 mx-auto mb-4 text-gray-700" />
               <div className="font-semibold mb-2">Location</div>
-              <div className="text-gray-700">123 Main Street, Downtown</div>
+              <div className="text-gray-700">646 Upper James Street, Hamilton, ON L9C 2Z2</div>
             </div>
             <div className="text-center">
               <Phone className="h-8 w-8 mx-auto mb-4 text-gray-700" />
               <div className="font-semibold mb-2">Phone</div>
-              <div className="text-gray-700">(555) 123-4567</div>
+              <div className="text-gray-700">(365) 323-3680</div>
             </div>
             <div className="text-center">
               <Calendar className="h-8 w-8 mx-auto mb-4 text-gray-700" />

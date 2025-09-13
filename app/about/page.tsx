@@ -56,9 +56,9 @@ export default function About() {
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                { name: 'Marcus Johnson', role: 'Master Barber & Owner', experience: '15+ years' },
-                { name: 'Alex Rodriguez', role: 'Senior Barber', experience: '8+ years' },
-                { name: 'Jordan Taylor', role: 'Barber Stylist', experience: '5+ years' }
+                { name: 'Le Roy', role: 'Master Barber & Owner', experience: '15+ years' },
+                { name: 'Chuks Pro', role: 'Senior Barber', experience: '8+ years' },
+                { name: 'Gabriel Taylor', role: 'Barber Stylist', experience: '5+ years' }
               ].map((barber, index) => (
                 <div key={index} className="text-center">
                   <div className="w-48 h-48 bg-gray-700 rounded-lg mx-auto mb-4">

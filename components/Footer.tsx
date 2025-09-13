@@ -82,9 +82,9 @@ export function Footer() {
                     <div>
                       <p className="text-black font-semibold mb-2 text-lg">Visit Our Shop</p>
                       <p className="text-gray-600 leading-relaxed">
-                        123 Main Street<br />
-                        Downtown District<br />
-                        City, State 12345
+                        646 Upper James Street,<br />
+                        Hamilton, ON<br />
+                        L9C 2Z2
                       </p>
                     </div>
                   </div>
@@ -95,7 +95,7 @@ export function Footer() {
                     </div>
                     <div>
                       <p className="text-black font-semibold mb-2 text-lg">Call Us</p>
-                      <p className="text-gray-600 text-lg font-medium">(555) 123-4567</p>
+                      <p className="text-gray-600 text-lg font-medium">(365) 323-3680</p>
                       <p className="text-gray-500 text-sm">Available during business hours</p>
                     </div>
                   </div>
