@@ -1,10 +1,11 @@
-// app/layout.tsx
+// dopekuts/app/layout.tsx
 import './globals.css';
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Navigation } from '@/components/Navigation';
 import { Footer } from '@/components/Footer';
 import { Toaster } from '@/components/ui/sonner';
+import { Chatbot } from '@/components/Chatbot';
 
 const GA_MEASUREMENT_ID =
   process.env.NEXT_PUBLIC_GA_ID || 'G-SCG3GZJBL3'; // from your screenshot
@@ -67,6 +68,9 @@ export default function RootLayout({
         <main className="flex-1">{children}</main>
         <Footer />
         <Toaster />
+
+        {/* Chatbot lives on every page */}
+        <Chatbot />
       </body>
     </html>
   );
