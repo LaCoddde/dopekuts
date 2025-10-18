@@ -1,155 +1,47 @@
+// dopekuts/app/admin/booking/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Calendar, Clock, User, Phone, Search, CreditCard as Edit, X, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Filter, ArrowUpDown } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Search, CreditCard as Edit, X, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react';
 import moment from 'moment';
-
-// Mock booking data
-const mockBookings = [
-  {
-    id: 1,
-    customerName: 'John Doe',
-    phone: '(555) 123-4567',
-    email: 'john@email.com',
-    service: 'Classic Cut',
-    date: '2025-01-20',
-    time: '10:00 AM',
-    duration: 45,
-    price: 35,
-    status: 'confirmed',
-    notes: 'Regular customer, prefers shorter on sides'
-  },
-  {
-    id: 2,
-    customerName: 'Mike Smith',
-    phone: '(555) 234-5678',
-    email: 'mike@email.com',
-    service: 'Beard Grooming',
-    date: '2025-01-20',
-    time: '11:30 AM',
-    duration: 30,
-    price: 25,
-    status: 'pending',
-    notes: 'First time customer'
-  },
-  {
-    id: 3,
-    customerName: 'David Wilson',
-    phone: '(555) 345-6789',
-    email: 'david@email.com',
-    service: 'Premium Package',
-    date: '2025-01-20',
-    time: '2:00 PM',
-    duration: 90,
-    price: 65,
-    status: 'confirmed',
-    notes: 'Wedding next week, wants premium styling'
-  },
-  {
-    id: 4,
-    customerName: 'Chris Brown',
-    phone: '(555) 456-7890',
-    email: 'chris@email.com',
-    service: 'Express Service',
-    date: '2025-01-21',
-    time: '9:00 AM',
-    duration: 20,
-    price: 25,
-    status: 'confirmed',
-    notes: ''
-  },
-  {
-    id: 5,
-    customerName: 'Alex Johnson',
-    phone: '(555) 567-8901',
-    email: 'alex@email.com',
-    service: 'Classic Cut',
-    date: '2025-01-21',
-    time: '3:30 PM',
-    duration: 45,
-    price: 35,
-    status: 'pending',
-    notes: 'Requested specific barber - Marcus'
-  },
-  {
-    id: 6,
-    customerName: 'Sarah Williams',
-    phone: '(555) 678-9012',
-    email: 'sarah@email.com',
-    service: 'Premium Package',
-    date: '2025-01-22',
-    time: '1:00 PM',
-    duration: 90,
-    price: 65,
-    status: 'confirmed',
-    notes: 'Anniversary dinner tonight'
-  },
-  {
-    id: 7,
-    customerName: 'Tom Anderson',
-    phone: '(555) 789-0123',
-    email: 'tom@email.com',
-    service: 'Classic Cut',
-    date: '2025-01-22',
-    time: '4:30 PM',
-    duration: 45,
-    price: 35,
-    status: 'cancelled',
-    notes: 'Customer called to cancel - family emergency'
-  },
-  {
-    id: 8,
-    customerName: 'Emily Davis',
-    phone: '(555) 890-1234',
-    email: 'emily@email.com',
-    service: 'Beard Grooming',
-    date: '2025-01-23',
-    time: '10:30 AM',
-    duration: 30,
-    price: 25,
-    status: 'pending',
-    notes: ''
-  },
-  {
-    id: 9,
-    customerName: 'Robert Martinez',
-    phone: '(555) 901-2345',
-    email: 'robert@email.com',
-    service: 'Express Service',
-    date: '2025-01-23',
-    time: '2:15 PM',
-    duration: 20,
-    price: 25,
-    status: 'confirmed',
-    notes: 'Lunch break appointment'
-  },
-  {
-    id: 10,
-    customerName: 'Jennifer Taylor',
-    phone: '(555) 012-3456',
-    email: 'jennifer@email.com',
-    service: 'Premium Package',
-    date: '2025-01-24',
-    time: '11:00 AM',
-    duration: 90,
-    price: 65,
-    status: 'pending',
-    notes: 'Job interview preparation'
-  }
-];
+import { getAllBookings, confirmPayment, cancelBooking, IBooking } from '@/lib/api/booking';
 
 export default function BookingManagement() {
-  const [bookings, setBookings] = useState(mockBookings);
+  // State for storing bookings, loading status, and errors from the API
+  const [bookings, setBookings] = useState<IBooking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // State for filtering and sorting UI controls
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'time' | 'customer' | 'service'>('date');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'custom'>('all');
   const [customDate, setCustomDate] = useState(moment().format('YYYY-MM-DD'));
 
+  // Fetch all bookings from the API when the component mounts
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        setIsLoading(true);
+        const fetchedBookings = await getAllBookings();
+        setBookings(fetchedBookings);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch bookings:", err);
+        setError("Could not load booking data. Please try again later.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBookings();
+  }, []);
+
+  // Function to generate status badges based on booking status
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -178,33 +70,60 @@ export default function BookingManagement() {
     }
   };
 
-  const handleStatusChange = (bookingId: number, newStatus: 'confirmed' | 'cancelled') => {
-    setBookings(bookings.map(booking => 
-      booking.id === bookingId 
-        ? { ...booking, status: newStatus }
-        : booking
-    ));
+  // API handler to confirm a booking
+  const handleConfirmBooking = async (bookingId: string) => {
+    try {
+      const { booking: updatedBooking } = await confirmPayment(bookingId);
+      // Update the local state for immediate UI feedback
+      setBookings(bookings.map(booking => 
+        booking._id === bookingId 
+          ? { ...booking, status: updatedBooking.status } 
+          : booking
+      ));
+    } catch (error) {
+      console.error("Failed to confirm booking:", error);
+      alert("Error: Could not confirm the booking.");
+    }
   };
 
-  const handleReschedule = (bookingId: number) => {
+  // API handler to cancel a booking
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    try {
+      await cancelBooking(bookingId);
+      // Update the local state for immediate UI feedback
+      setBookings(bookings.map(booking => 
+        booking._id === bookingId 
+          ? { ...booking, status: 'cancelled' } 
+          : booking
+      ));
+    } catch (error) {
+      console.error("Failed to cancel booking:", error);
+      alert("Error: Could not cancel the booking.");
+    }
+  };
+  
+  const handleReschedule = (bookingId: string) => {
     alert(`Reschedule booking #${bookingId} - This would open a date/time picker modal`);
   };
 
+  // Memoized calculation for filtered and sorted bookings
   const filteredAndSortedBookings = (() => {
     let filtered = bookings.filter(booking => {
-      const matchesSearch = booking.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const customerFullName = `${booking.firstName} ${booking.lastName}`;
+      const matchesSearch = customerFullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            booking.phone.includes(searchTerm) ||
                            booking.service.toLowerCase().includes(searchTerm.toLowerCase());
-
+      
       const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
-
+      
       let matchesDate = true;
       if (dateFilter === 'today') {
-        matchesDate = moment(booking.date).format('YYYY-MM-DD') === moment().format('YYYY-MM-DD');
+        matchesDate = moment(booking.date).isSame(moment(), 'day');
       } else if (dateFilter === 'week') {
-        matchesDate = moment(booking.date).isBetween(moment(), moment().add(7, 'days'), 'day', '[]');
+        matchesDate = moment(booking.date).isBetween(moment().startOf('day'), moment().add(7, 'days').endOf('day'));
       } else if (dateFilter === 'custom') {
-        matchesDate = moment(booking.date).format('YYYY-MM-DD') === customDate;
+        matchesDate = moment(booking.date).isSame(customDate, 'day');
       }
 
       return matchesSearch && matchesStatus && matchesDate;
@@ -213,29 +132,30 @@ export default function BookingManagement() {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'date':
-          return moment(a.date).valueOf() - moment(b.date).valueOf();
+            const dateComparison = moment(a.date).valueOf() - moment(b.date).valueOf();
+            if (dateComparison !== 0) return dateComparison;
+            // If dates are the same, sort by time
+            return moment(a.time, 'h:mm A').valueOf() - moment(b.time, 'h:mm A').valueOf();
         case 'time':
-          const timeA = moment(a.time, 'h:mm A').valueOf();
-          const timeB = moment(b.time, 'h:mm A').valueOf();
-          return timeA - timeB;
+          return moment(a.time, 'h:mm A').valueOf() - moment(b.time, 'h:mm A').valueOf();
         case 'customer':
-          return a.customerName.localeCompare(b.customerName);
+          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
         case 'service':
           return a.service.localeCompare(b.service);
         default:
           return 0;
       }
     });
-
     return filtered;
   })();
 
+  // Calculations for the dashboard cards
   const todayBookings = bookings.filter(booking => 
-    moment(booking.date).format('YYYY-MM-DD') === moment().format('YYYY-MM-DD')
+    moment(booking.date).isSame(moment(), 'day')
   );
 
-  const upcomingBookings = bookings.filter(booking => 
-    moment(booking.date).isAfter(moment(), 'day')
+  const upcomingBookings = bookings.filter(booking =>
+    moment(booking.date).isBetween(moment(), moment().add(7, 'days'), 'day', '[]')
   );
 
   return (
@@ -244,7 +164,7 @@ export default function BookingManagement() {
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Booking Management</h1>
         <p className="text-sm md:text-base text-gray-400">View and manage customer appointments</p>
       </div>
-
+      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader className="pb-3">
@@ -257,7 +177,7 @@ export default function BookingManagement() {
             </p>
           </CardContent>
         </Card>
-        
+                
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-300">Upcoming</CardTitle>
@@ -267,16 +187,16 @@ export default function BookingManagement() {
             <p className="text-sm text-gray-400">Next 7 days</p>
           </CardContent>
         </Card>
-        
+                
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-300">Revenue Today</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-white">
-              ${todayBookings.reduce((sum, booking) => sum + booking.price, 0)}
+              ${todayBookings.reduce((sum, booking) => booking.status === 'confirmed' ? sum + booking.price : sum, 0)}
             </div>
-            <p className="text-sm text-gray-400">Estimated</p>
+            <p className="text-sm text-gray-400">From confirmed</p>
           </CardContent>
         </Card>
       </div>
@@ -304,7 +224,6 @@ export default function BookingManagement() {
                 </div>
               </div>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Date Filter</label>
@@ -319,7 +238,6 @@ export default function BookingManagement() {
                   <option value="custom">Custom Date</option>
                 </select>
               </div>
-
               {dateFilter === 'custom' && (
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Select Date</label>
@@ -331,7 +249,6 @@ export default function BookingManagement() {
                   />
                 </div>
               )}
-
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Status</label>
                 <select
@@ -345,7 +262,6 @@ export default function BookingManagement() {
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
-
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Sort By</label>
                 <select
@@ -361,17 +277,20 @@ export default function BookingManagement() {
               </div>
             </div>
           </div>
-
-          {/* Results Count */}
+          
           <div className="mt-4 mb-2">
             <p className="text-sm text-gray-400">
               Showing {filteredAndSortedBookings.length} booking{filteredAndSortedBookings.length !== 1 ? 's' : ''}
             </p>
           </div>
-
+          
           {/* Bookings List */}
           <div className="space-y-4">
-            {filteredAndSortedBookings.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-12 text-gray-400">Loading bookings...</div>
+            ) : error ? (
+              <div className="text-center py-12 text-red-400">{error}</div>
+            ) : filteredAndSortedBookings.length === 0 ? (
               <div className="text-center py-8 md:py-12 text-gray-400">
                 <Calendar className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-sm md:text-base">No bookings found for the selected criteria</p>
@@ -379,7 +298,7 @@ export default function BookingManagement() {
             ) : (
               filteredAndSortedBookings.map((booking) => (
                 <div
-                  key={booking.id}
+                  key={booking._id}
                   className="bg-gray-700 border border-gray-600 rounded-lg p-3 sm:p-4 lg:p-6"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -387,11 +306,10 @@ export default function BookingManagement() {
                     <div className="flex-1">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 md:mb-3">
                         <h3 className="text-base md:text-lg font-semibold text-white">
-                          {booking.customerName}
+                          {booking.firstName} {booking.lastName}
                         </h3>
                         {getStatusBadge(booking.status)}
                       </div>
-                      
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3 text-xs sm:text-sm">
                         <div className="flex items-center text-gray-300">
                           <User className="h-4 w-4 mr-2" />
@@ -410,7 +328,6 @@ export default function BookingManagement() {
                           {booking.phone}
                         </div>
                       </div>
-                      
                       {booking.notes && (
                         <div className="mt-2 md:mt-3 p-2 md:p-3 bg-gray-800 rounded-md">
                           <p className="text-xs sm:text-sm text-gray-300">
@@ -419,35 +336,33 @@ export default function BookingManagement() {
                         </div>
                       )}
                     </div>
-
+                    {/* Action Buttons */}
                     <div className="flex flex-col gap-2 lg:w-36 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-600 lg:pl-4">
                       {booking.status === 'pending' && (
                         <Button
                           size="sm"
-                          onClick={() => handleStatusChange(booking.id, 'confirmed')}
+                          onClick={() => handleConfirmBooking(booking._id)}
                           className="bg-green-600 hover:bg-green-700 text-white w-full"
                         >
                           <CheckCircle className="h-4 w-4 mr-1" />
                           Confirm
                         </Button>
                       )}
-
                       {booking.status !== 'cancelled' && (
                         <>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleReschedule(booking.id)}
+                            onClick={() => handleReschedule(booking._id)}
                             className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
                           >
                             <Edit className="h-4 w-4 mr-1" />
                             Reschedule
                           </Button>
-
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleStatusChange(booking.id, 'cancelled')}
+                            onClick={() => handleCancelBooking(booking._id)}
                             className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
                           >
                             <X className="h-4 w-4 mr-1" />
@@ -455,7 +370,6 @@ export default function BookingManagement() {
                           </Button>
                         </>
                       )}
-
                       {booking.status === 'cancelled' && (
                         <Badge variant="secondary" className="text-center py-2">
                           No Actions
