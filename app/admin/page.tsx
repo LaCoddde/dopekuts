@@ -1,311 +1,179 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Calendar, 
-  Users, 
-  DollarSign, 
-  BarChart3, 
-  MessageSquare, 
-  Settings,
-  Clock,
-  Check,
-  X,
-  Edit
-} from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Scissors, ArrowRight, Shield } from 'lucide-react';
 
-// Mock data
-const todayAppointments = [
-  { id: 1, customer: 'John Doe', service: 'Classic Cut', time: '10:00 AM', status: 'confirmed', phone: '(555) 123-4567' },
-  { id: 2, customer: 'Mike Smith', service: 'Beard Grooming', time: '11:30 AM', status: 'pending', phone: '(555) 234-5678' },
-  { id: 3, customer: 'David Wilson', service: 'Premium Package', time: '2:00 PM', status: 'confirmed', phone: '(555) 345-6789' },
-  { id: 4, customer: 'Chris Brown', service: 'Express Service', time: '4:30 PM', status: 'pending', phone: '(555) 456-7890' },
-];
+export default function AdminLogin() {
+  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
-const recentCustomers = [
-  { id: 1, name: 'John Doe', email: 'john@email.com', visits: 5, lastVisit: '2025-01-15', totalSpent: 175 },
-  { id: 2, name: 'Mike Smith', email: 'mike@email.com', visits: 3, lastVisit: '2025-01-10', totalSpent: 95 },
-  { id: 3, name: 'David Wilson', email: 'david@email.com', visits: 8, lastVisit: '2025-01-12', totalSpent: 320 },
-];
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
 
-export default function AdminDashboard() {
-  const [selectedTab, setSelectedTab] = useState('overview');
+    setIsLoading(true);
+    
+    // Simulate API call to send OTP
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    setIsLoading(false);
+    setStep('otp');
+  };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return <Badge className="bg-green-100 text-green-800">Confirmed</Badge>;
-      case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
-      case 'cancelled':
-        return <Badge className="bg-red-100 text-red-800">Cancelled</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp) return;
+
+    setIsLoading(true);
+    
+    // Simulate OTP verification
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // For demo purposes, accept any 6-digit OTP
+    if (otp.length === 6) {
+      localStorage.setItem('admin_authenticated', 'true');
+      router.push('/admin/booking');
+    } else {
+      alert('Invalid OTP. Please enter a 6-digit code.');
     }
+    
+    setIsLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 py-8">
-      <div className="container-max section-padding">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Admin Dashboard</h1>
-          <p className="text-gray-300">Manage your barbershop operations</p>
-        </div>
-
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-gray-800">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="appointments">Appointments</TabsTrigger>
-            <TabsTrigger value="customers">Customers</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-white">Today's Appointments</CardTitle>
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">12</div>
-                  <p className="text-xs text-gray-400">+2 from yesterday</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-white">Total Customers</CardTitle>
-                  <Users className="h-4 w-4 text-gray-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">1,234</div>
-                  <p className="text-xs text-gray-400">+15 this week</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-white">Daily Revenue</CardTitle>
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">$650</div>
-                  <p className="text-xs text-gray-400">+12% from yesterday</p>
-                </CardContent>
-              </Card>
-              
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-white">Avg. Rating</CardTitle>
-                  <BarChart3 className="h-4 w-4 text-gray-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">4.9</div>
-                  <p className="text-xs text-gray-400">Based on 156 reviews</p>
-                </CardContent>
-              </Card>
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="container-max section-padding py-8">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-6">
+              <div className="p-4 bg-white rounded-full">
+                <Shield className="h-12 w-12 text-black" />
+              </div>
             </div>
+            <h1 className="text-3xl font-bold text-white mb-2">Admin Access</h1>
+            <p className="text-gray-300">
+              {step === 'email' 
+                ? 'Enter your email to receive a verification code'
+                : 'Enter the 6-digit code sent to your email'
+              }
+            </p>
+          </div>
 
-            {/* Today's Appointments */}
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-white">Today's Appointments</CardTitle>
-                <CardDescription className="text-gray-300">Manage today's scheduled appointments</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {todayAppointments.map((appointment) => (
-                    <div key={appointment.id} className="flex items-center justify-between p-4 border border-gray-600 rounded-lg bg-gray-700">
-                      <div className="flex items-center space-x-4">
-                        <Clock className="h-5 w-5 text-gray-400" />
-                        <div>
-                          <div className="font-semibold text-white">{appointment.customer}</div>
-                          <div className="text-sm text-gray-300">{appointment.service} • {appointment.time}</div>
+          <Card className="bg-gray-800 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white">
+                {step === 'email' ? 'Email Verification' : 'Enter OTP Code'}
+              </CardTitle>
+              <CardDescription className="text-gray-300">
+                {step === 'email' 
+                  ? 'We\'ll send a verification code to your email'
+                  : `Code sent to ${email}`
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {step === 'email' ? (
+                <form onSubmit={handleEmailSubmit} className="space-y-6">
+                  <div>
+                    <Label htmlFor="email" className="text-white font-medium">
+                      Email Address
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="admin@dopecuts.com"
+                      className="mt-2 bg-gray-700 border-gray-600 text-white"
+                      required
+                    />
+                  </div>
+                  
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-white text-black hover:bg-gray-200"
+                    disabled={isLoading || !email}
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2"></div>
+                        Sending Code...
+                      </div>
+                    ) : (
+                      <>
+                        Continue
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleOtpSubmit} className="space-y-6">
+                  <div>
+                    <Label htmlFor="otp" className="text-white font-medium">
+                      Verification Code
+                    </Label>
+                    <Input
+                      id="otp"
+                      type="text"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="mt-2 bg-gray-700 border-gray-600 text-white text-center text-2xl tracking-widest"
+                      maxLength={6}
+                      required
+                    />
+                    <p className="text-sm text-gray-400 mt-2">
+                      Enter the 6-digit code sent to your email
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-white text-black hover:bg-gray-200"
+                      disabled={isLoading || otp.length !== 6}
+                    >
+                      {isLoading ? (
+                        <div className="flex items-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2"></div>
+                          Verifying...
                         </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {getStatusBadge(appointment.status)}
-                        <Button size="sm" variant="outline">
-                          <Check className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ) : (
+                        'Verify & Login'
+                      )}
+                    </Button>
+                    
+                    <Button 
+                      type="button"
+                      variant="outline"
+                      className="w-full border-gray-600 text-white hover:bg-gray-700"
+                      onClick={() => setStep('email')}
+                    >
+                      Back to Email
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Appointments Tab */}
-          <TabsContent value="appointments" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Appointment Management</CardTitle>
-                <CardDescription>View and manage all appointments</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center mb-6">
-                  <Input placeholder="Search appointments..." className="max-w-sm" />
-                  <Button>Add Appointment</Button>
-                </div>
-                
-                <div className="space-y-4">
-                  {todayAppointments.map((appointment) => (
-                    <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div>
-                          <div className="font-semibold">{appointment.customer}</div>
-                          <div className="text-sm text-gray-500">
-                            {appointment.service} • {appointment.time} • {appointment.phone}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {getStatusBadge(appointment.status)}
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <MessageSquare className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Customers Tab */}
-          <TabsContent value="customers" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Customer Management</CardTitle>
-                <CardDescription>View and manage customer information</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center mb-6">
-                  <Input placeholder="Search customers..." className="max-w-sm" />
-                  <Button>Add Customer</Button>
-                </div>
-                
-                <div className="space-y-4">
-                  {recentCustomers.map((customer) => (
-                    <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div>
-                        <div className="font-semibold">{customer.name}</div>
-                        <div className="text-sm text-gray-500">{customer.email}</div>
-                        <div className="text-sm text-gray-500">
-                          {customer.visits} visits • Last: {customer.lastVisit} • Total: ${customer.totalSpent}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button size="sm" variant="outline">View</Button>
-                        <Button size="sm" variant="outline">
-                          <MessageSquare className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Business Analytics</CardTitle>
-                <CardDescription>Track your business performance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="text-center p-6 bg-gray-50 rounded-lg">
-                    <div className="text-3xl font-bold text-black mb-2">$15,420</div>
-                    <div className="text-gray-600">Monthly Revenue</div>
-                  </div>
-                  <div className="text-center p-6 bg-gray-50 rounded-lg">
-                    <div className="text-3xl font-bold text-black mb-2">89%</div>
-                    <div className="text-gray-600">Show-up Rate</div>
-                  </div>
-                  <div className="text-center p-6 bg-gray-50 rounded-lg">
-                    <div className="text-3xl font-bold text-black mb-2">4.9</div>
-                    <div className="text-gray-600">Avg Rating</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Messages Tab */}
-          <TabsContent value="messages" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>SMS Management</CardTitle>
-                <CardDescription>Send messages to customers</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Button>Send Bulk Message</Button>
-                  <Button variant="outline">Message Templates</Button>
-                  <div className="mt-6">
-                    <h3 className="font-semibold mb-4">Recent Messages</h3>
-                    <div className="text-gray-500">No recent messages to display</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Business Settings</CardTitle>
-                <CardDescription>Configure your barbershop settings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-4">Business Hours</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input placeholder="Opening Time" defaultValue="9:00 AM" />
-                    <Input placeholder="Closing Time" defaultValue="7:00 PM" />
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="font-semibold mb-4">Booking Settings</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span>Maximum booking advance (days)</span>
-                      <Input type="number" defaultValue="60" className="w-20" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Cancellation deadline (hours)</span>
-                      <Input type="number" defaultValue="24" className="w-20" />
-                    </div>
-                  </div>
-                </div>
-                
-                <Button>Save Settings</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          {/* Demo Instructions */}
+          <div className="mt-6 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
+            <p className="text-blue-200 text-sm text-center">
+              <strong>Demo:</strong> Enter any email and any 6-digit code to access the admin panel
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
