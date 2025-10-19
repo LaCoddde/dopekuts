@@ -246,7 +246,7 @@ export default function BookAppointment() {
                     <h3 className="text-lg font-bold text-white mb-4">Complete Your Payment</h3>
                     <p className="text-gray-300 mb-4">To confirm your booking, please send an Interac e-Transfer with the following details:</p>
                     <div className="space-y-2 text-sm">
-                        <p><strong className="text-gray-200">Recipient Email:</strong> roy@dopecuts.ca</p>
+                        <p><strong className="text-gray-200">Recipient Email:</strong> leeroyfoghoosiobe@gmail.com</p>
                         <p><strong className="text-gray-200">Amount:</strong> ${selectedService?.price}</p>
                         <p><strong className="text-gray-200">Message/Note:</strong> Booking for {confirmedBooking.firstName}</p>
                     </div>
