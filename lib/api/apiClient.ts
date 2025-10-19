@@ -1,4 +1,3 @@
-// dopekuts/lib/api/apiClient.ts
 import axios, { AxiosInstance } from 'axios';
 import axiosRetry from 'axios-retry';
 
@@ -7,15 +6,14 @@ import axiosRetry from 'axios-retry';
  * It's configured with the base URL, credentials, and automatic retries for network errors.
  */
 const apiClient: AxiosInstance = axios.create({
-  // The base URL for all API requests, pulled from environment variables.
-  // CORRECTED: Set the baseURL directly from the environment variable.
-  // This assumes NEXT_PUBLIC_API_URL is set to 'http://localhost:5001/api/v1'
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  // Use the production API URL from environment variables, but fall back
+  // to the local server address for development.
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 60_000, // Requests will time out after 60 seconds
-  withCredentials: true, // This allows cookies to be sent and received
+  withCredentials: true, // This allows cookies to be sent and received across domains
 });
 
 // --- Retry Logic ---
