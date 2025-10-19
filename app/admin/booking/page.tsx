@@ -6,15 +6,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Calendar, Clock, User, Phone, Search, CreditCard as Edit, X, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Search, CreditCard as Edit, X, CircleCheck as CheckCircle, CircleAlert as AlertCircle, PlusCircle } from 'lucide-react';
 import moment from 'moment';
 import { getAllBookings, confirmPayment, cancelBooking, IBooking } from '@/lib/api/booking';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import BookAppointmentPage from '@/app/book/page';
 
 export default function BookingManagement() {
   // State for storing bookings, loading status, and errors from the API
   const [bookings, setBookings] = useState<IBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // State for the create booking modal
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // State for filtering and sorting UI controls
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,23 +28,33 @@ export default function BookingManagement() {
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'custom'>('all');
   const [customDate, setCustomDate] = useState(moment().format('YYYY-MM-DD'));
 
+  // Extracted function to fetch bookings
+  const fetchBookings = async () => {
+    try {
+      setIsLoading(true);
+      const fetchedBookings = await getAllBookings();
+      setBookings(fetchedBookings);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to fetch bookings:", err);
+      setError("Could not load booking data. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   // Fetch all bookings from the API when the component mounts
   useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        setIsLoading(true);
-        const fetchedBookings = await getAllBookings();
-        setBookings(fetchedBookings);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to fetch bookings:", err);
-        setError("Could not load booking data. Please try again later.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchBookings();
   }, []);
+
+  // When the modal's open state changes, if it's closing, we refetch the bookings
+  const handleModalOpenChange = (open: boolean) => {
+    setIsCreateModalOpen(open);
+    if (!open) {
+      fetchBookings();
+    }
+  };
 
   // Function to generate status badges based on booking status
   const getStatusBadge = (status: string) => {
@@ -201,188 +216,205 @@ export default function BookingManagement() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white">Manage Bookings</CardTitle>
-          <CardDescription className="text-gray-300">
-            View and manage customer appointments
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex flex-col lg:flex-row gap-3">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search by name, phone, or service..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Date Filter</label>
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as 'all' | 'today' | 'week' | 'custom')}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
-                >
-                  <option value="all">All Dates</option>
-                  <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="custom">Custom Date</option>
-                </select>
-              </div>
-              {dateFilter === 'custom' && (
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Select Date</label>
-                  <Input
-                    type="date"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as 'all' | 'confirmed' | 'pending' | 'cancelled')}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
-                >
-                  <option value="all">All Status</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="pending">Pending</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Sort By</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as 'date' | 'time' | 'customer' | 'service')}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
-                >
-                  <option value="date">Date</option>
-                  <option value="time">Time</option>
-                  <option value="customer">Customer Name</option>
-                  <option value="service">Service Type</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-4 mb-2">
-            <p className="text-sm text-gray-400">
-              Showing {filteredAndSortedBookings.length} booking{filteredAndSortedBookings.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          
-          {/* Bookings List */}
-          <div className="space-y-4">
-            {isLoading ? (
-              <div className="text-center py-12 text-gray-400">Loading bookings...</div>
-            ) : error ? (
-              <div className="text-center py-12 text-red-400">{error}</div>
-            ) : filteredAndSortedBookings.length === 0 ? (
-              <div className="text-center py-8 md:py-12 text-gray-400">
-                <Calendar className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-sm md:text-base">No bookings found for the selected criteria</p>
-              </div>
-            ) : (
-              filteredAndSortedBookings.map((booking) => (
-                <div
-                  key={booking._id}
-                  className="bg-gray-700 border border-gray-600 rounded-lg p-3 sm:p-4 lg:p-6"
-                >
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Booking Info */}
-                    <div className="flex-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 md:mb-3">
-                        <h3 className="text-base md:text-lg font-semibold text-white">
-                          {booking.firstName} {booking.lastName}
-                        </h3>
-                        {getStatusBadge(booking.status)}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3 text-xs sm:text-sm">
-                        <div className="flex items-center text-gray-300">
-                          <User className="h-4 w-4 mr-2" />
-                          {booking.service}
-                        </div>
-                        <div className="flex items-center text-gray-300">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          {moment(booking.date).format('MMM DD, YYYY')}
-                        </div>
-                        <div className="flex items-center text-gray-300">
-                          <Clock className="h-4 w-4 mr-2" />
-                          {booking.time} ({booking.duration}min)
-                        </div>
-                        <div className="flex items-center text-gray-300">
-                          <Phone className="h-4 w-4 mr-2" />
-                          {booking.phone}
-                        </div>
-                      </div>
-                      {booking.notes && (
-                        <div className="mt-2 md:mt-3 p-2 md:p-3 bg-gray-800 rounded-md">
-                          <p className="text-xs sm:text-sm text-gray-300">
-                            <strong>Notes:</strong> {booking.notes}
-                          </p>
-                        </div>
-                      )}
+      <Dialog open={isCreateModalOpen} onOpenChange={handleModalOpenChange}>
+        <Card className="bg-gray-800 border-gray-700">
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                        <CardTitle className="text-white">Manage Bookings</CardTitle>
+                        <CardDescription className="text-gray-300">
+                        View and manage customer appointments
+                        </CardDescription>
                     </div>
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2 lg:w-36 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-600 lg:pl-4">
-                      {booking.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleConfirmBooking(booking._id)}
-                          className="bg-green-600 hover:bg-green-700 text-white w-full"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Confirm
+                    <DialogTrigger asChild>
+                        <Button className="bg-white text-black hover:bg-gray-200 w-full sm:w-auto">
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Create Booking
                         </Button>
-                      )}
-                      {booking.status !== 'cancelled' && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReschedule(booking._id)}
-                            className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Reschedule
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleCancelBooking(booking._id)}
-                            className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Cancel
-                          </Button>
-                        </>
-                      )}
-                      {booking.status === 'cancelled' && (
-                        <Badge variant="secondary" className="text-center py-2">
-                          No Actions
-                        </Badge>
-                      )}
-                    </div>
+                    </DialogTrigger>
+                </div>
+            </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex flex-col lg:flex-row gap-3">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search by name, phone, or service..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 bg-gray-700 border-gray-600 text-white"
+                    />
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Date Filter</label>
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as 'all' | 'today' | 'week' | 'custom')}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
+                  >
+                    <option value="all">All Dates</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                </div>
+                {dateFilter === 'custom' && (
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Select Date</label>
+                    <Input
+                      type="date"
+                      value={customDate}
+                      onChange={(e) => setCustomDate(e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Status</label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as 'all' | 'confirmed' | 'pending' | 'cancelled')}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="pending">Pending</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Sort By</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'date' | 'time' | 'customer' | 'service')}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
+                  >
+                    <option value="date">Date</option>
+                    <option value="time">Time</option>
+                    <option value="customer">Customer Name</option>
+                    <option value="service">Service Type</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4 mb-2">
+              <p className="text-sm text-gray-400">
+                Showing {filteredAndSortedBookings.length} booking{filteredAndSortedBookings.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            
+            {/* Bookings List */}
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="text-center py-12 text-gray-400">Loading bookings...</div>
+              ) : error ? (
+                <div className="text-center py-12 text-red-400">{error}</div>
+              ) : filteredAndSortedBookings.length === 0 ? (
+                <div className="text-center py-8 md:py-12 text-gray-400">
+                  <Calendar className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-sm md:text-base">No bookings found for the selected criteria</p>
+                </div>
+              ) : (
+                filteredAndSortedBookings.map((booking) => (
+                  <div
+                    key={booking._id}
+                    className="bg-gray-700 border border-gray-600 rounded-lg p-3 sm:p-4 lg:p-6"
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      {/* Booking Info */}
+                      <div className="flex-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 md:mb-3">
+                          <h3 className="text-base md:text-lg font-semibold text-white">
+                            {booking.firstName} {booking.lastName}
+                          </h3>
+                          {getStatusBadge(booking.status)}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3 text-xs sm:text-sm">
+                          <div className="flex items-center text-gray-300">
+                            <User className="h-4 w-4 mr-2" />
+                            {booking.service}
+                          </div>
+                          <div className="flex items-center text-gray-300">
+                            <Calendar className="h-4 w-4 mr-2" />
+                            {moment(booking.date).format('MMM DD, YYYY')}
+                          </div>
+                          <div className="flex items-center text-gray-300">
+                            <Clock className="h-4 w-4 mr-2" />
+                            {booking.time} ({booking.duration}min)
+                          </div>
+                          <div className="flex items-center text-gray-300">
+                            <Phone className="h-4 w-4 mr-2" />
+                            {booking.phone}
+                          </div>
+                        </div>
+                        {booking.notes && (
+                          <div className="mt-2 md:mt-3 p-2 md:p-3 bg-gray-800 rounded-md">
+                            <p className="text-xs sm:text-sm text-gray-300">
+                              <strong>Notes:</strong> {booking.notes}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      {/* Action Buttons */}
+                      <div className="flex flex-col gap-2 lg:w-36 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-600 lg:pl-4">
+                        {booking.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleConfirmBooking(booking._id)}
+                            className="bg-green-600 hover:bg-green-700 text-white w-full"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Confirm
+                          </Button>
+                        )}
+                        {booking.status !== 'cancelled' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleReschedule(booking._id)}
+                              className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Reschedule
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCancelBooking(booking._id)}
+                              className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                        {booking.status === 'cancelled' && (
+                          <Badge variant="secondary" className="text-center py-2">
+                            No Actions
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <DialogContent className="p-0 border-none max-w-5xl w-full h-[90vh] bg-transparent">
+            <div className="overflow-y-auto w-full h-full rounded-lg">
+                <BookAppointmentPage />
+            </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
