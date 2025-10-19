@@ -2,35 +2,40 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Calendar, Mail, MessageSquare, Settings, X } from 'lucide-react';
+import {
+  Calendar,
+  CalendarClock,
+  Mail,
+  MessageSquare,
+  Package,
+  Scissors,
+  Settings,
+  X,
+  type LucideProps,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AdminSidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
+type NavItem = {
+  title: string;
+  href: string;
+  icon: React.ComponentType<LucideProps>;
+};
 
-const navItems = [
-  {
-    title: 'Booking',
-    href: '/admin/booking',
-    icon: Calendar,
-  },
-  {
-    title: 'Contact',
-    href: '/admin/contact',
-    icon: MessageSquare,
-  },
-  {
-    title: 'Email',
-    href: '/admin/email',
-    icon: Mail,
-  },
-  {
-    title: 'Settings',
-    href: '/admin/settings',
-    icon: Settings,
-  },
+const navItems: NavItem[] = [
+  // Added from your request
+  { title: 'Services', href: '/admin/services', icon: Scissors },
+  { title: 'Products', href: '/admin/products', icon: Package },
+  { title: 'Calendar', href: '/admin/calendar', icon: CalendarClock },
+
+  // Existing
+  { title: 'Booking', href: '/admin/booking', icon: Calendar },
+  { title: 'Contact', href: '/admin/contact', icon: MessageSquare },
+  { title: 'Email', href: '/admin/email', icon: Mail },
+  { title: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 
 export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
