@@ -6,7 +6,7 @@ A modern, full-stack web application for DopeCuts barbershop, built with Next.js
 
 DopeCuts is a comprehensive barbershop management system featuring online booking, customer management, admin dashboard, and e-commerce capabilities. The platform is designed to be modern, elegant, and mobile-responsive.
 
-## ✨ Key Features
+## ✨ Key Features!
 
 ### Customer Features
 - **Online Booking System**: Book, confirm, reschedule, and cancel appointments
