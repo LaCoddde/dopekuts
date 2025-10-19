@@ -652,8 +652,8 @@ export default function BookAppointment() {
 
                     <div className="p-4 bg-gray-700 rounded-lg">
                       <h4 className="font-semibold text-white mb-2">Contact Info</h4>
-                      <p className="text-gray-300 text-sm">📍 123 Main Street, Downtown</p>
-                      <p className="text-gray-300 text-sm">📞 (555) 123-4567</p>
+                      <p className="text-gray-300 text-sm">📍 646 Upper James Street, Hamilton ON, L9C 2Z2</p>
+                      <p className="text-gray-300 text-sm">📞 (365) 323-3680</p>
                     </div>
                   </CardContent>
                 </Card>
