@@ -1,6 +1,7 @@
+// app/admin/services/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,58 +23,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Scissors, Plus, Trash2, Edit, Clock, DollarSign } from 'lucide-react';
-
-interface Service {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  duration: number;
-}
-
-const mockServices: Service[] = [
-  {
-    id: 1,
-    name: 'Classic Cut',
-    description: 'Traditional haircut with clippers and scissors',
-    price: 30,
-    duration: 30,
-  },
-  {
-    id: 2,
-    name: 'Premium Cut & Style',
-    description: 'Haircut with styling and premium products',
-    price: 45,
-    duration: 45,
-  },
-  {
-    id: 3,
-    name: 'Beard Trim',
-    description: 'Professional beard trimming and shaping',
-    price: 20,
-    duration: 20,
-  },
-  {
-    id: 4,
-    name: 'Hot Towel Shave',
-    description: 'Traditional hot towel shave experience',
-    price: 35,
-    duration: 30,
-  },
-  {
-    id: 5,
-    name: 'Deluxe Package',
-    description: 'Haircut, beard trim, and hot towel treatment',
-    price: 70,
-    duration: 60,
-  },
-];
+import {
+  getAllServices,
+  createService,
+  updateService,
+  deleteService,
+  IService,
+} from '@/lib/api/service';
 
 export default function ServicesManagement() {
-  const [services, setServices] = useState<Service[]>(mockServices);
+  const [services, setServices] = useState<IService[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [editingService, setEditingService] = useState<IService | null>(null);
   const [newService, setNewService] = useState({
     name: '',
     description: '',
@@ -81,55 +46,93 @@ export default function ServicesManagement() {
     duration: '30',
   });
 
-  const handleAddService = () => {
+  const fetchServices = async () => {
+    try {
+      setIsLoading(true);
+      const data = await getAllServices();
+      setServices(data);
+    } catch (err) {
+      setError('Failed to fetch services. Please try again later.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  const handleAddService = async () => {
     if (newService.name && newService.price) {
-      const service: Service = {
-        id: services.length + 1,
-        name: newService.name,
-        description: newService.description,
-        price: parseFloat(newService.price),
-        duration: parseInt(newService.duration),
-      };
-      setServices([...services, service]);
-      setNewService({ name: '', description: '', price: '', duration: '30' });
-      setIsAddDialogOpen(false);
+      try {
+        const serviceData = {
+          name: newService.name,
+          description: newService.description,
+          price: parseFloat(newService.price),
+          duration: parseInt(newService.duration),
+        };
+        await createService(serviceData);
+        await fetchServices(); // Refetch to get the latest list
+        setNewService({ name: '', description: '', price: '', duration: '30' });
+        setIsAddDialogOpen(false);
+      } catch (err) {
+        console.error('Failed to add service:', err);
+        // Optionally, set a user-facing error message here
+      }
     }
   };
 
-  const handleEditService = () => {
+  const handleEditService = async () => {
     if (editingService && newService.name && newService.price) {
-      const updatedServices = services.map((service) =>
-        service.id === editingService.id
-          ? {
-              ...service,
-              name: newService.name,
-              description: newService.description,
-              price: parseFloat(newService.price),
-              duration: parseInt(newService.duration),
-            }
-          : service
-      );
-      setServices(updatedServices);
-      setIsEditDialogOpen(false);
-      setEditingService(null);
-      setNewService({ name: '', description: '', price: '', duration: '30' });
+      try {
+        const updatedData = {
+          name: newService.name,
+          description: newService.description,
+          price: parseFloat(newService.price),
+          duration: parseInt(newService.duration),
+        };
+        await updateService(editingService._id, updatedData);
+        await fetchServices(); // Refetch to get the latest list
+        setIsEditDialogOpen(false);
+        setEditingService(null);
+        setNewService({ name: '', description: '', price: '', duration: '30' });
+      } catch (err) {
+        console.error('Failed to edit service:', err);
+        // Optionally, set a user-facing error message here
+      }
     }
   };
 
-  const openEditDialog = (service: Service) => {
+  const openEditDialog = (service: IService) => {
     setEditingService(service);
     setNewService({
       name: service.name,
-      description: service.description,
+      description: service.description || '',
       price: service.price.toString(),
       duration: service.duration.toString(),
     });
     setIsEditDialogOpen(true);
   };
 
-  const handleDeleteService = (id: number) => {
-    setServices(services.filter((service) => service.id !== id));
+  const handleDeleteService = async (id: string) => {
+    try {
+      await deleteService(id);
+      // Optimistically update UI by filtering out the deleted service
+      setServices(services.filter((service) => service._id !== id));
+    } catch (err) {
+      console.error('Failed to delete service:', err);
+      // Optionally, set a user-facing error message here
+    }
   };
+
+  if (isLoading) {
+    return <div className="text-center text-white">Loading services...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center text-red-500">{error}</div>;
+  }
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -357,7 +360,7 @@ export default function ServicesManagement() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {services.map((service) => (
-          <Card key={service.id} className="bg-gray-800 border-gray-700">
+          <Card key={service._id} className="bg-gray-800 border-gray-700">
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
@@ -366,7 +369,7 @@ export default function ServicesManagement() {
                 </div>
               </div>
               <CardDescription className="text-gray-400 min-h-[40px]">
-                {service.description}
+                {service.description || 'No description provided.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -394,7 +397,7 @@ export default function ServicesManagement() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDeleteService(service.id)}
+                    onClick={() => handleDeleteService(service._id)}
                     className="flex-1 border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />

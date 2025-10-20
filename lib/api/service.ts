@@ -1,4 +1,4 @@
-// dopekuts/lib/api/service.ts
+// lib/api/service.ts
 import apiClient from './apiClient';
 
 // --- Interfaces ---
@@ -8,10 +8,12 @@ export interface IService {
     name: string;
     duration: number; // in minutes
     price: number;
+    description?: string; // <-- ADDED
     createdAt: string;
     updatedAt: string;
 }
 
+// ServiceData will now correctly include the optional 'description' field
 export type ServiceData = Omit<IService, '_id' | 'createdAt' | 'updatedAt'>;
 
 // --- Admin-Only API Functions ---

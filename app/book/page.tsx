@@ -1,4 +1,4 @@
-// dopekuts/app/book/page.tsx
+// app/book/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -402,6 +402,11 @@ export default function BookAppointment() {
                                         <div className="text-xl lg:text-2xl font-bold text-white">${service.price}</div>
                                         </div>
                                     </div>
+                                    {/* MODIFICATION START */}
+                                    {service.description && (
+                                        <p className="text-sm text-gray-400 pr-8">{service.description}</p>
+                                    )}
+                                    {/* MODIFICATION END */}
                                     </Label>
                                 </div>
                                 ))}
@@ -473,145 +478,145 @@ export default function BookAppointment() {
                   {/* Step 3: Customer Information */}
                   {step === 3 && (
                     <div className="space-y-8">
-                      <div>
-                        <Label htmlFor="phone" className="text-white font-medium text-lg">Phone Number</Label>
-                        <p className="text-gray-400 text-sm mt-1 mb-4">Please enter your phone number to continue</p>
-                        <div className="space-y-4">
-                          <PhoneInput
-                            international
-                            defaultCountry="CA"
-                            value={formData.phone}
-                            onChange={(value) => setFormData({ ...formData, phone: value || '' })}
-                            className="phone-input"
-                          />
-                          {formData.phone && !isValidPhoneNumber(formData.phone) && (
-                            <p className="text-red-400 text-sm">Please enter a valid phone number</p>
-                          )}
-                          {formData.phone && isValidPhoneNumber(formData.phone) && !showRestOfForm && (
-                            <Button
-                              onClick={handlePhoneSubmit}
-                              className="bg-white text-black hover:bg-gray-200"
-                            >
-                              Continue
-                            </Button>
-                          )}
+                        <div>
+                            <Label htmlFor="phone" className="text-white font-medium text-lg">Phone Number</Label>
+                            <p className="text-gray-400 text-sm mt-1 mb-4">Please enter your phone number to continue</p>
+                            <div className="space-y-4">
+                                <PhoneInput
+                                international
+                                defaultCountry="CA"
+                                value={formData.phone}
+                                onChange={(value) => setFormData({ ...formData, phone: value || '' })}
+                                className="phone-input"
+                                />
+                                {formData.phone && !isValidPhoneNumber(formData.phone) && (
+                                <p className="text-red-400 text-sm">Please enter a valid phone number</p>
+                                )}
+                                {formData.phone && isValidPhoneNumber(formData.phone) && !showRestOfForm && (
+                                <Button
+                                    onClick={handlePhoneSubmit}
+                                    className="bg-white text-black hover:bg-gray-200"
+                                >
+                                    Continue
+                                </Button>
+                                )}
+                            </div>
                         </div>
-                      </div>
 
-                      {showRestOfForm && (
-                        <div className="space-y-6 border-t border-gray-700 pt-8">
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div>
-                              <Label htmlFor="firstName" className="text-white font-medium">First Name</Label>
-                              <Input
-                                id="firstName"
-                                value={formData.firstName}
-                                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                className="mt-2 bg-gray-700 border-gray-600 text-white"
-                                placeholder="Enter your first name"
-                              />
+                        {showRestOfForm && (
+                            <div className="space-y-6 border-t border-gray-700 pt-8">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div>
+                                    <Label htmlFor="firstName" className="text-white font-medium">First Name</Label>
+                                    <Input
+                                    id="firstName"
+                                    value={formData.firstName}
+                                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
+                                    placeholder="Enter your first name"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="lastName" className="text-white font-medium">Last Name</Label>
+                                    <Input
+                                    id="lastName"
+                                    value={formData.lastName}
+                                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
+                                    placeholder="Enter your last name"
+                                    />
+                                </div>
+                                </div>
+                                <div>
+                                <Label htmlFor="email" className="text-white font-medium">Email Address</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
+                                    placeholder="Enter your email address"
+                                />
+                                </div>
+                                <div>
+                                <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
+                                <Textarea
+                                    id="notes"
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    placeholder="Any special requests or notes for your barber..."
+                                    className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
+                                />
+                                </div>
+                                <div>
+                                <Label className="text-white font-medium mb-4 block">Payment Option</Label>
+                                <RadioGroup
+                                    value={formData.paymentMethod}
+                                    onValueChange={(value) => setFormData({ ...formData, paymentMethod: value as 'in-person' | 'now' })}
+                                    className="space-y-3"
+                                >
+                                    <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
+                                    {/* FIX 3: Changed value to 'in-person' */}
+                                    <RadioGroupItem value="in-person" id="in-person" />
+                                    <Label htmlFor="in-person" className="text-white cursor-pointer">
+                                        Pay at Appointment
+                                    </Label>
+                                    </div>
+                                    <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
+                                    <RadioGroupItem value="now" id="now" />
+                                    <Label htmlFor="now" className="text-white cursor-pointer">
+                                        Pay Now (Interac e-Transfer)
+                                    </Label>
+                                    </div>
+                                </RadioGroup>
+                                </div>
                             </div>
-                            <div>
-                              <Label htmlFor="lastName" className="text-white font-medium">Last Name</Label>
-                              <Input
-                                id="lastName"
-                                value={formData.lastName}
-                                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                className="mt-2 bg-gray-700 border-gray-600 text-white"
-                                placeholder="Enter your last name"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <Label htmlFor="email" className="text-white font-medium">Email Address</Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              value={formData.email}
-                              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                              className="mt-2 bg-gray-700 border-gray-600 text-white"
-                              placeholder="Enter your email address"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
-                            <Textarea
-                              id="notes"
-                              value={formData.notes}
-                              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                              placeholder="Any special requests or notes for your barber..."
-                              className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-white font-medium mb-4 block">Payment Option</Label>
-                            <RadioGroup
-                              value={formData.paymentMethod}
-                              onValueChange={(value) => setFormData({ ...formData, paymentMethod: value as 'in-person' | 'now' })}
-                              className="space-y-3"
-                            >
-                              <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
-                                {/* FIX 3: Changed value to 'in-person' */}
-                                <RadioGroupItem value="in-person" id="in-person" />
-                                <Label htmlFor="in-person" className="text-white cursor-pointer">
-                                  Pay at Appointment
-                                </Label>
-                              </div>
-                              <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
-                                <RadioGroupItem value="now" id="now" />
-                                <Label htmlFor="now" className="text-white cursor-pointer">
-                                  Pay Now (Interac e-Transfer)
-                                </Label>
-                              </div>
-                            </RadioGroup>
-                          </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   )}
 
                   {/* Step 4: Confirmation (No changes needed here) */}
                   {step === 4 && (
                     <div className="space-y-6">
-                      <div className="bg-gray-700 p-6 rounded-lg border border-gray-600">
-                        <h3 className="text-lg lg:text-xl font-bold text-white mb-6">Booking Summary</h3>
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                            <span className="text-gray-300">Service:</span>
-                            <span className="font-semibold text-white">{selectedService?.name}</span>
-                          </div>
-                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                            <span className="text-gray-300">Date:</span>
-                            <span className="font-semibold text-white">
-                              {formData.date && moment(formData.date).format('MMMM DD, YYYY')}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                            <span className="text-gray-300">Time:</span>
-                            <span className="font-semibold text-white">{formData.time}</span>
-                          </div>
-                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                            <span className="text-gray-300">Duration:</span>
-                            <span className="font-semibold text-white">
-                              {selectedService?.duration} minutes
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center py-3 border-t border-gray-500">
-                            <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
-                            <span className="text-xl lg:text-2xl font-bold text-white">
-                              ${selectedService?.price}
-                            </span>
-                          </div>
+                        <div className="bg-gray-700 p-6 rounded-lg border border-gray-600">
+                            <h3 className="text-lg lg:text-xl font-bold text-white mb-6">Booking Summary</h3>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                                <span className="text-gray-300">Service:</span>
+                                <span className="font-semibold text-white">{selectedService?.name}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                                <span className="text-gray-300">Date:</span>
+                                <span className="font-semibold text-white">
+                                    {formData.date && moment(formData.date).format('MMMM DD, YYYY')}
+                                </span>
+                                </div>
+                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                                <span className="text-gray-300">Time:</span>
+                                <span className="font-semibold text-white">{formData.time}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                                <span className="text-gray-300">Duration:</span>
+                                <span className="font-semibold text-white">
+                                    {selectedService?.duration} minutes
+                                </span>
+                                </div>
+                                <div className="flex justify-between items-center py-3 border-t border-gray-500">
+                                <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
+                                <span className="text-xl lg:text-2xl font-bold text-white">
+                                    ${selectedService?.price}
+                                </span>
+                                </div>
+                            </div>
                         </div>
-                      </div>
-                      <div className="bg-blue-900/30 border border-blue-700 p-6 rounded-lg">
-                        <h4 className="font-semibold text-white mb-3">Important Information:</h4>
-                        <ul className="list-disc list-inside space-y-2 text-gray-300">
-                            <li>Please arrive 5-10 minutes before your appointment</li>
-                            <li>Cancellations must be made 24 hours in advance</li>
-                            <li>You will receive an email confirmation shortly</li>
-                        </ul>
-                      </div>
+                        <div className="bg-blue-900/30 border border-blue-700 p-6 rounded-lg">
+                            <h4 className="font-semibold text-white mb-3">Important Information:</h4>
+                            <ul className="list-disc list-inside space-y-2 text-gray-300">
+                                <li>Please arrive 5-10 minutes before your appointment</li>
+                                <li>Cancellations must be made 24 hours in advance</li>
+                                <li>You will receive an email confirmation shortly</li>
+                            </ul>
+                        </div>
                     </div>
                   )}
                 </CardContent>
