@@ -1,7 +1,7 @@
 // app/admin/calendar/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FC } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,12 +13,54 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CalendarClock, Save, Clock, AlertCircle } from 'lucide-react';
+import { CalendarClock, Save, Clock, AlertCircle, CheckCircle2, XCircle, X } from 'lucide-react';
 import {
   getCalendarSettings,
   updateCalendarSettings,
   ICalendarSettings,
 } from '@/lib/api/calendar';
+
+// --- Custom Modal Component ---
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  message: string;
+  isError?: boolean;
+}
+
+const ConfirmationModal: FC<ModalProps> = ({ isOpen, onClose, title, message, isError = false }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
+      <div className="relative w-full max-w-md p-6 mx-4 bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
+        <div className="flex flex-col items-center text-center">
+            {isError ? (
+                <XCircle className="w-12 h-12 mb-4 text-red-500" />
+            ) : (
+                <CheckCircle2 className="w-12 h-12 mb-4 text-green-500" />
+            )}
+            <h3 className="text-xl font-bold text-white">{title}</h3>
+            <p className="mt-2 text-sm text-gray-300">{message}</p>
+            <Button
+                onClick={onClose}
+                className="w-full mt-6 bg-white text-black hover:bg-gray-200"
+            >
+                OK
+            </Button>
+        </div>
+        <button
+            onClick={onClose}
+            className="absolute top-2 right-2 p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white"
+        >
+            <X className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 const timeOptions = [
   '06:00', '06:30', '07:00', '07:30', '08:00', '08:30',
@@ -35,6 +77,12 @@ export default function CalendarManagement() {
   const [schedule, setSchedule] = useState<ICalendarSettings[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    isError: false,
+  });
 
   useEffect(() => {
     const fetchSchedule = async () => {
@@ -43,7 +91,6 @@ export default function CalendarManagement() {
         setError(null);
         const settings = await getCalendarSettings();
         
-        // Sort the settings to ensure a consistent order
         const sortedSettings = settings.sort((a, b) => {
           return dayOrder.indexOf(a.dayOfWeek) - dayOrder.indexOf(b.dayOfWeek);
         });
@@ -58,7 +105,7 @@ export default function CalendarManagement() {
     };
 
     fetchSchedule();
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, []);
 
   const toggleDay = (index: number) => {
     const newSchedule = [...schedule];
@@ -80,20 +127,17 @@ export default function CalendarManagement() {
   
   const updateBreakStartTime = (index: number, time: string) => {
     const newSchedule = [...schedule];
-    // If no breaks exist, create one. Otherwise, update the existing one.
     if (newSchedule[index].breaks.length === 0) {
         const nextTimeSlot = timeOptions.find(option => option > time);
         const breakEndTime = nextTimeSlot && nextTimeSlot < newSchedule[index].endTime ? nextTimeSlot : '';
         newSchedule[index].breaks.push({ startTime: time, endTime: breakEndTime });
     } else {
       newSchedule[index].breaks[0].startTime = time;
-      // Ensure break end time is after break start time
       if (time >= newSchedule[index].breaks[0].endTime) {
         const nextTimeSlot = timeOptions.find(option => option > time);
         if (nextTimeSlot && nextTimeSlot < newSchedule[index].endTime) {
           newSchedule[index].breaks[0].endTime = nextTimeSlot;
         } else {
-          // If no valid next slot, clear the end time or set a default
           newSchedule[index].breaks[0].endTime = ''; 
         }
       }
@@ -111,14 +155,25 @@ export default function CalendarManagement() {
 
   const handleSave = async () => {
     try {
-      console.log('Saving schedule:', schedule);
       await updateCalendarSettings(schedule);
-      alert('Schedule saved successfully!');
+      setModalState({
+        isOpen: true,
+        title: 'Schedule Updated',
+        message: 'Your new availability has been saved successfully.',
+        isError: false,
+      });
     } catch (err) {
       console.error('Failed to save schedule:', err);
-      alert('Failed to save schedule. Please try again.');
+      setModalState({
+        isOpen: true,
+        title: 'Update Failed',
+        message: 'We could not save your schedule. Please check your connection and try again.',
+        isError: true,
+      });
     }
   };
+  
+  const closeModal = () => setModalState({ isOpen: false, title: '', message: '', isError: false });
 
   if (loading) {
     return (
@@ -139,215 +194,224 @@ export default function CalendarManagement() {
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Calendar Management
-        </h1>
-        <p className="text-sm md:text-base text-gray-400">
-          Set your weekly availability schedule
-        </p>
-      </div>
+    <>
+      <ConfirmationModal
+        isOpen={modalState.isOpen}
+        title={modalState.title}
+        message={modalState.message}
+        isError={modalState.isError}
+        onClose={closeModal}
+      />
+      <div className="space-y-4 md:space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
+            Calendar Management
+          </h1>
+          <p className="text-sm md:text-base text-gray-400">
+            Set your weekly availability schedule
+          </p>
+        </div>
 
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <CalendarClock className="h-5 w-5" />
-            Weekly Availability
-          </CardTitle>
-          <CardDescription className="text-gray-300">
-            Configure the days and hours you are available for appointments
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-4">
-            {schedule.map((daySchedule, index) => {
-              const breakStartTimeOptions = timeOptions.filter(
-                (time) => time > daySchedule.startTime && time < daySchedule.endTime
-              );
-              const breakEndTimeOptions = timeOptions.filter(
-                (time) => time > (daySchedule.breaks[0]?.startTime || '') && time <= daySchedule.endTime
-              );
-              
-              return (
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <CalendarClock className="h-5 w-5" />
+              Weekly Availability
+            </CardTitle>
+            <CardDescription className="text-gray-300">
+              Configure the days and hours you are available for appointments
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-4">
+              {schedule.map((daySchedule, index) => {
+                const breakStartTimeOptions = timeOptions.filter(
+                  (time) => time > daySchedule.startTime && time < daySchedule.endTime
+                );
+                const breakEndTimeOptions = timeOptions.filter(
+                  (time) => time > (daySchedule.breaks[0]?.startTime || '') && time <= daySchedule.endTime
+                );
+                
+                return (
+                  <div
+                    key={daySchedule.dayOfWeek}
+                    className={`p-4 rounded-lg border transition-all duration-300 ${
+                      daySchedule.isEnabled
+                        ? 'bg-gray-750 border-gray-600'
+                        : 'bg-gray-800 border-gray-700 opacity-60'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor={`toggle-${daySchedule.dayOfWeek}`}
+                          className="text-white text-base md:text-lg font-semibold cursor-pointer"
+                        >
+                          {daySchedule.dayOfWeek}
+                        </Label>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-400">
+                            {daySchedule.isEnabled ? 'Available' : 'Closed'}
+                          </span>
+                          <Switch
+                            id={`toggle-${daySchedule.dayOfWeek}`}
+                            checked={daySchedule.isEnabled}
+                            onCheckedChange={() => toggleDay(index)}
+                          />
+                        </div>
+                      </div>
+
+                      {daySchedule.isEnabled && (
+                        <div className="space-y-4">
+                          {/* Working Hours */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label className="text-gray-300 text-sm flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                Start Time
+                              </Label>
+                              <Select
+                                value={daySchedule.startTime}
+                                onValueChange={(value) => updateStartTime(index, value)}
+                              >
+                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
+                                  {timeOptions.map((time) => (
+                                    <SelectItem key={`start-${time}`} value={time} className="text-white">
+                                      {time}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-gray-300 text-sm flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                End Time
+                              </Label>
+                              <Select
+                                value={daySchedule.endTime}
+                                onValueChange={(value) => updateEndTime(index, value)}
+                              >
+                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
+                                  {timeOptions.map((time) => (
+                                    <SelectItem key={`end-${time}`} value={time} className="text-white">
+                                      {time}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {/* Break Times */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-600/50">
+                              <div className="space-y-2">
+                              <Label className="text-gray-300 text-sm flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                Break Start
+                              </Label>
+                              <Select
+                                value={daySchedule.breaks[0]?.startTime}
+                                onValueChange={(value) => updateBreakStartTime(index, value)}
+                              >
+                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                                  <SelectValue placeholder="No break" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
+                                  {breakStartTimeOptions.map((time) => (
+                                    <SelectItem key={`break-start-${time}`} value={time} className="text-white">
+                                      {time}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-gray-300 text-sm flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                Break End
+                              </Label>
+                              <Select
+                                value={daySchedule.breaks[0]?.endTime}
+                                onValueChange={(value) => updateBreakEndTime(index, value)}
+                                disabled={!daySchedule.breaks[0]?.startTime}
+                              >
+                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                                  <SelectValue placeholder="No break" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
+                                  {breakEndTimeOptions.map((time) => (
+                                    <SelectItem key={`break-end-${time}`} value={time} className="text-white">
+                                      {time}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="pt-4">
+              <Button
+                onClick={handleSave}
+                className="w-full bg-white text-black hover:bg-gray-200"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save Availability Schedule
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white">Schedule Summary</CardTitle>
+            <CardDescription className="text-gray-300">
+              Your current weekly schedule
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {schedule.map((daySchedule) => (
                 <div
                   key={daySchedule.dayOfWeek}
-                  className={`p-4 rounded-lg border transition-all duration-300 ${
-                    daySchedule.isEnabled
-                      ? 'bg-gray-750 border-gray-600'
-                      : 'bg-gray-800 border-gray-700 opacity-60'
-                  }`}
+                  className="flex items-start justify-between py-3 border-b border-gray-700 last:border-0"
                 >
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <Label
-                        htmlFor={`toggle-${daySchedule.dayOfWeek}`}
-                        className="text-white text-base md:text-lg font-semibold cursor-pointer"
-                      >
-                        {daySchedule.dayOfWeek}
-                      </Label>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-400">
-                          {daySchedule.isEnabled ? 'Available' : 'Closed'}
-                        </span>
-                        <Switch
-                          id={`toggle-${daySchedule.dayOfWeek}`}
-                          checked={daySchedule.isEnabled}
-                          onCheckedChange={() => toggleDay(index)}
-                        />
-                      </div>
-                    </div>
-
-                    {daySchedule.isEnabled && (
-                      <div className="space-y-4">
-                        {/* Working Hours */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-gray-300 text-sm flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              Start Time
-                            </Label>
-                            <Select
-                              value={daySchedule.startTime}
-                              onValueChange={(value) => updateStartTime(index, value)}
-                            >
-                              <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                {timeOptions.map((time) => (
-                                  <SelectItem key={`start-${time}`} value={time} className="text-white">
-                                    {time}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-gray-300 text-sm flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              End Time
-                            </Label>
-                            <Select
-                              value={daySchedule.endTime}
-                              onValueChange={(value) => updateEndTime(index, value)}
-                            >
-                              <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                {timeOptions.map((time) => (
-                                  <SelectItem key={`end-${time}`} value={time} className="text-white">
-                                    {time}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        {/* Break Times */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-600/50">
-                            <div className="space-y-2">
-                            <Label className="text-gray-300 text-sm flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              Break Start
-                            </Label>
-                            <Select
-                              value={daySchedule.breaks[0]?.startTime}
-                              onValueChange={(value) => updateBreakStartTime(index, value)}
-                            >
-                              <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                <SelectValue placeholder="No break" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                {breakStartTimeOptions.map((time) => (
-                                  <SelectItem key={`break-start-${time}`} value={time} className="text-white">
-                                    {time}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-gray-300 text-sm flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              Break End
-                            </Label>
-                            <Select
-                              value={daySchedule.breaks[0]?.endTime}
-                              onValueChange={(value) => updateBreakEndTime(index, value)}
-                              disabled={!daySchedule.breaks[0]?.startTime}
-                            >
-                              <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                <SelectValue placeholder="No break" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                {breakEndTimeOptions.map((time) => (
-                                  <SelectItem key={`break-end-${time}`} value={time} className="text-white">
-                                    {time}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  <span className="text-white font-medium">{daySchedule.dayOfWeek}</span>
+                  <div className="text-right">
+                      {daySchedule.isEnabled ? (
+                          <>
+                              <span className="text-gray-300 block">
+                                  {`${daySchedule.startTime} - ${daySchedule.endTime}`}
+                              </span>
+                              {daySchedule.breaks.length > 0 && daySchedule.breaks[0].startTime && (
+                                  <span className="text-xs text-gray-400 block">
+                                      {`Break: ${daySchedule.breaks[0].startTime} - ${daySchedule.breaks[0].endTime}`}
+                                  </span>
+                              )}
+                          </>
+                      ) : (
+                          <span className="text-gray-400">Closed</span>
+                      )}
                   </div>
                 </div>
-              )
-            })}
-          </div>
-
-          <div className="pt-4">
-            <Button
-              onClick={handleSave}
-              className="w-full bg-white text-black hover:bg-gray-200"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              Save Availability Schedule
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white">Schedule Summary</CardTitle>
-          <CardDescription className="text-gray-300">
-            Your current weekly schedule
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {schedule.map((daySchedule) => (
-              <div
-                key={daySchedule.dayOfWeek}
-                className="flex items-start justify-between py-3 border-b border-gray-700 last:border-0"
-              >
-                <span className="text-white font-medium">{daySchedule.dayOfWeek}</span>
-                <div className="text-right">
-                    {daySchedule.isEnabled ? (
-                        <>
-                            <span className="text-gray-300 block">
-                                {`${daySchedule.startTime} - ${daySchedule.endTime}`}
-                            </span>
-                            {daySchedule.breaks.length > 0 && daySchedule.breaks[0].startTime && (
-                                <span className="text-xs text-gray-400 block">
-                                    {`Break: ${daySchedule.breaks[0].startTime} - ${daySchedule.breaks[0].endTime}`}
-                                </span>
-                            )}
-                        </>
-                    ) : (
-                        <span className="text-gray-400">Closed</span>
-                    )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
