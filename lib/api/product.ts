@@ -10,6 +10,7 @@ export interface IProduct {
     link: string;
     description?: string;
     image?: string; // URL to the image
+    affiliateLink?: string; // <-- Added affiliate link
     createdAt: string;
     updatedAt: string;
 }

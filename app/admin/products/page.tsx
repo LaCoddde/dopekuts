@@ -1,33 +1,276 @@
+// app/admin/products/page.tsx
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Star, PlusCircle, Pencil, Trash2 } from 'lucide-react';
+import { getAllProducts, createProduct, updateProduct, deleteProduct, IProduct } from '@/lib/api/product';
 
-export default function ProductsManagement() {
+// An empty product template for the 'Add Product' modal form.
+const emptyProduct = {
+  name: '',
+  description: '',
+  price: 0,
+  link: '',
+  affiliateLink: '', // <-- Added affiliate link
+  image: 'https://images.pexels.com/photos/1570807/pexels-photo-1570807.jpeg?auto=compress&cs=tinysrgb&w=400',
+};
+
+export default function Products() {
+  const [products, setProducts] = useState<IProduct[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [currentProduct, setCurrentProduct] = useState<Partial<IProduct> | null>(null);
+  const [isNew, setIsNew] = useState(false);
+
+  // Function to fetch all products from the API
+  const fetchProducts = async () => {
+    try {
+      const data = await getAllProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error("Failed to fetch products:", error);
+      // Here you could add user-facing error handling, like a toast notification
+    }
+  };
+
+  // Fetch products when the component mounts
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // Handlers for opening modals
+  const handleOpenAddModal = () => {
+    setIsNew(true);
+    setCurrentProduct(emptyProduct);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (product: IProduct) => {
+    setIsNew(false);
+    setCurrentProduct({ ...product });
+    setIsModalOpen(true);
+  };
+  
+  const handleOpenDeleteModal = (product: IProduct) => {
+    setCurrentProduct(product);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Handler for form input changes in the modal
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value, type, checked } = e.target;
+    setCurrentProduct(prev => ({
+      ...prev,
+      [id]: type === 'checkbox' ? checked : type === 'number' ? parseFloat(value) : value
+    }));
+  };
+
+  // Handler for saving changes (Add or Edit)
+  const handleSaveProduct = async () => {
+    if (!currentProduct) return;
+
+    const formData = new FormData();
+    // Append all fields from currentProduct to FormData, skipping the ID
+    Object.keys(currentProduct).forEach(key => {
+        if (key !== '_id' && currentProduct[key as keyof typeof currentProduct] !== null) {
+            formData.append(key, currentProduct[key as keyof typeof currentProduct] as string | Blob);
+        }
+    });
+
+    try {
+      if (isNew) {
+        await createProduct(formData);
+      } else if (currentProduct._id) {
+        await updateProduct(currentProduct._id, formData);
+      }
+      await fetchProducts(); // Refresh the product list
+    } catch (error) {
+      console.error('Failed to save product:', error);
+    } finally {
+      setIsModalOpen(false);
+      setCurrentProduct(null);
+    }
+  };
+
+  // Handler for deleting a product
+  const handleDeleteProduct = async () => {
+    if (!currentProduct?._id) return;
+    try {
+      await deleteProduct(currentProduct._id);
+      await fetchProducts(); // Refresh the product list
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+    } finally {
+      setIsDeleteModalOpen(false);
+      setCurrentProduct(null);
+    }
+  };
+
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Products Management</h1>
-        <p className="text-sm md:text-base text-gray-400">
-          Manage your barbershop products and inventory
-        </p>
+    <>
+      <div className="min-h-screen bg-gray-900 py-16">
+        <div className="container-max section-padding">
+          <div className="flex justify-between items-center mb-12">
+            <div className="text-left">
+              <h1 className="text-5xl font-bold text-white mb-6">Manage Products</h1>
+              <p className="text-xl text-gray-300 max-w-2xl">
+                Add, edit, or remove products from your inventory.
+              </p>
+            </div>
+            <Button onClick={handleOpenAddModal} className="flex items-center gap-2">
+              <PlusCircle className="h-5 w-5" />
+              Add Product
+            </Button>
+          </div>
+
+          {/* Product Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {products.map((product) => (
+              // <-- Card is now wrapped in a link
+              <a 
+                href={product.affiliateLink || product.link} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                key={product._id}
+              >
+                <Card className="hover-lift overflow-hidden bg-gray-800 border-gray-700 flex flex-col h-full">
+                  <div className="aspect-square relative">
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                    {/* Note: The properties below are not in IProduct, but the UI is kept for potential future use. */}
+                    {/* {product.originalPrice && (
+                      <Badge className="absolute top-4 left-4 bg-red-500">
+                        Sale
+                      </Badge>
+                    )}
+                    {!product.inStock && (
+                      <Badge className="absolute top-4 right-4 bg-gray-500">
+                        Out of Stock
+                      </Badge>
+                    )} */}
+                  </div>
+                  
+                  <CardHeader>
+                    <CardTitle className="text-lg text-white">{product.name}</CardTitle>
+                    {/* {product.category && (
+                      <Badge variant="outline" className="mt-2 w-fit">
+                        {product.category}
+                      </Badge>
+                    )} */}
+                    <CardDescription className="pt-2 text-gray-300">
+                      {product.description}
+                    </CardDescription>
+                  </CardHeader>
+                  
+                  <CardContent className="flex-grow flex flex-col justify-end">
+                    {/* <div className="flex items-center gap-2 mb-4">
+                      <div className="flex items-center">
+                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                        <span className="ml-1 text-sm font-medium">{product.rating}</span>
+                      </div>
+                      <span className="text-sm text-gray-400">({product.reviews} reviews)</span>
+                    </div> */}
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl font-bold text-white">${product.price}</span>
+                        {/* {product.originalPrice && (
+                          <span className="text-lg text-gray-400 line-through">
+                            ${product.originalPrice}
+                          </span>
+                        )} */}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={(e) => { e.preventDefault(); handleOpenEditModal(product); }}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={(e) => { e.preventDefault(); handleOpenDeleteModal(product); }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Products
-          </CardTitle>
-          <CardDescription className="text-gray-300">Coming soon</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-12">
-            <Package className="h-16 w-16 mx-auto text-gray-600 mb-4" />
-            <p className="text-gray-400">Product management features will be available soon.</p>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Edit/Add Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-gray-800 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle>{isNew ? 'Add New Product' : 'Edit Product'}</DialogTitle>
+            <DialogDescription>
+              {isNew ? 'Fill in the details for the new product.' : 'Make changes to your product here. Click save when you\'re done.'}
+            </DialogDescription>
+          </DialogHeader>
+          {currentProduct && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">Name</Label>
+                <Input id="name" value={currentProduct.name} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="description" className="text-right">Description</Label>
+                <Input id="description" value={currentProduct.description} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="price" className="text-right">Price</Label>
+                <Input id="price" type="number" value={currentProduct.price} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="link" className="text-right">Link</Label>
+                <Input id="link" value={currentProduct.link} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+              {/* <-- Input for Affiliate Link added --> */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="affiliateLink" className="text-right">Affiliate Link</Label>
+                <Input id="affiliateLink" value={currentProduct.affiliateLink || ''} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="image" className="text-right">Image URL</Label>
+                <Input id="image" value={currentProduct.image} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleSaveProduct}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-gray-800 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the product: <span className="font-semibold text-white">{currentProduct?.name}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleDeleteProduct}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
