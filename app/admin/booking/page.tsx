@@ -1,7 +1,7 @@
 // dopekuts/app/admin/booking/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,8 +25,7 @@ export default function BookingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'time' | 'customer' | 'service'>('date');
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState(moment().format('YYYY-MM-DD'));
+  const [monthFilter, setMonthFilter] = useState(moment().format('YYYY-MM')); // Default to current month
 
   // Extracted function to fetch bookings
   const fetchBookings = async () => {
@@ -122,6 +121,18 @@ export default function BookingManagement() {
     alert(`Reschedule booking #${bookingId} - This would open a date/time picker modal`);
   };
 
+  // Get a list of available months from bookings to populate filter
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>();
+    bookings.forEach(booking => {
+      monthSet.add(moment(booking.date).format('YYYY-MM'));
+    });
+    // Ensure current month is always an option
+    monthSet.add(moment().format('YYYY-MM'));
+    
+    return Array.from(monthSet).sort().reverse(); // Newest first
+  }, [bookings]);
+
   // Memoized calculation for filtered and sorted bookings
   const filteredAndSortedBookings = (() => {
     let filtered = bookings.filter(booking => {
@@ -133,12 +144,21 @@ export default function BookingManagement() {
       const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
       
       let matchesDate = true;
-      if (dateFilter === 'today') {
-        matchesDate = moment(booking.date).isSame(moment(), 'day');
-      } else if (dateFilter === 'week') {
-        matchesDate = moment(booking.date).isBetween(moment().startOf('day'), moment().add(7, 'days').endOf('day'));
-      } else if (dateFilter === 'custom') {
-        matchesDate = moment(booking.date).isSame(customDate, 'day');
+      if (monthFilter !== 'all') {
+        const isCurrentMonth = moment(monthFilter, 'YYYY-MM').isSame(moment(), 'month');
+        
+        if (isCurrentMonth) {
+          // Filter from today to end of month
+          matchesDate = moment(booking.date).isBetween(
+            moment().startOf('day'), 
+            moment().endOf('month'), 
+            'day', 
+            '[]' // inclusive
+          );
+        } else {
+          // Filter for the entire selected month
+          matchesDate = moment(booking.date).isSame(monthFilter, 'month');
+        }
       }
 
       return matchesSearch && matchesStatus && matchesDate;
@@ -149,8 +169,8 @@ export default function BookingManagement() {
         case 'date':
             const dateComparison = moment(a.date).valueOf() - moment(b.date).valueOf();
             if (dateComparison !== 0) return dateComparison;
-            // If dates are the same, sort by time
-            return moment(a.time, 'h:mm A').valueOf() - moment(b.time, 'h:mm A').valueOf();
+            // If dates are the same, sort by time DESCENDING
+            return moment(b.time, 'h:mm A').valueOf() - moment(a.time, 'h:mm A').valueOf();
         case 'time':
           return moment(a.time, 'h:mm A').valueOf() - moment(b.time, 'h:mm A').valueOf();
         case 'customer':
@@ -249,31 +269,22 @@ export default function BookingManagement() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Date Filter</label>
+                  <label className="text-xs text-gray-400 mb-1 block">Month Filter</label>
                   <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as 'all' | 'today' | 'week' | 'custom')}
+                    value={monthFilter}
+                    onChange={(e) => setMonthFilter(e.target.value)}
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
                   >
-                    <option value="all">All Dates</option>
-                    <option value="today">Today</option>
-                    <option value="week">This Week</option>
-                    <option value="custom">Custom Date</option>
+                    <option value="all">All Months</option>
+                    {availableMonths.map(month => (
+                      <option key={month} value={month}>
+                        {moment(month, 'YYYY-MM').format('MMMM YYYY')}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                {dateFilter === 'custom' && (
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Select Date</label>
-                    <Input
-                      type="date"
-                      value={customDate}
-                      onChange={(e) => setCustomDate(e.target.value)}
-                      className="bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                )}
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Status</label>
                   <select
