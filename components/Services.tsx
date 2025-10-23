@@ -1,40 +1,59 @@
+// components/Services.tsx
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Scissors, Rat as Razor, Sparkles, Clock } from 'lucide-react';
+import { Scissors, Sparkles, Clock } from 'lucide-react';
+// Renamed 'Rat' to 'RazorIcon' to avoid conflicts and be more descriptive
+import { Rat as RazorIcon } from 'lucide-react'; 
+import { useState, useEffect } from 'react';
+import { getAllServices, IService } from '@/lib/api/service';
+import { LucideIcon } from 'lucide-react';
 
-const services = [
-  {
-    icon: Scissors,
-    title: 'Classic Cuts',
-    description: 'Precision haircuts tailored to your style and personality',
-    price: 'From $35',
-    duration: '45 min'
-  },
-  {
-    icon: Razor,
-    title: 'Beard Grooming',
-    description: 'Professional beard trimming and styling services',
-    price: 'From $25',
-    duration: '30 min'
-  },
-  {
-    icon: Sparkles,
-    title: 'Premium Package',
-    description: 'Complete grooming experience with wash, cut, and styling',
-    price: 'From $65',
-    duration: '90 min'
-  },
-  {
-    icon: Clock,
-    title: 'Express Service',
-    description: 'Quick touch-ups and maintenance cuts for busy schedules',
-    price: 'From $25',
-    duration: '20 min'
+/**
+ * Helper function to determine which icon to show based on the service name.
+ * This is needed because the API response (IService) doesn't include an icon field.
+ */
+const getServiceIcon = (serviceName: string): LucideIcon => {
+  const name = serviceName.toLowerCase();
+  if (name.includes('cut')) {
+    return Scissors;
   }
-];
+  if (name.includes('beard') || name.includes('shave')) {
+    return RazorIcon;
+  }
+  if (name.includes('package') || name.includes('premium')) {
+    return Sparkles;
+  }
+  if (name.includes('express')) {
+    return Clock;
+  }
+  // Default icon
+  return Scissors;
+};
 
 export function Services() {
+  const [services, setServices] = useState<IService[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadServices() {
+      try {
+        setIsLoading(true);
+        const apiServices = await getAllServices();
+        setServices(apiServices);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch services:', err);
+        setError('Could not load services. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadServices();
+  }, []);
+
   return (
     <section className="py-24 bg-gray-900">
       <div className="container-max section-padding">
@@ -46,28 +65,48 @@ export function Services() {
             Professional grooming services delivered by master barbers with years of experience
           </p>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {services.map((service, index) => (
-            <Card key={index} className="hover-lift cursor-pointer bg-gray-800 border-gray-700">
-              <CardHeader className="text-center">
-                <div className="mx-auto mb-4 p-3 bg-white rounded-full w-fit">
-                  <service.icon className="h-8 w-8 text-black" />
-                </div>
-                <CardTitle className="text-xl font-bold text-white">{service.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-center">
-                <CardDescription className="text-gray-300 mb-4 min-h-[3rem]">
-                  {service.description}
-                </CardDescription>
-                <div className="space-y-2">
-                  <div className="text-2xl font-bold text-white">{service.price}</div>
-                  <div className="text-sm text-gray-400">{service.duration}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+
+        {/* --- Handle Loading State --- */}
+        {isLoading && (
+          <div className="text-center">
+            <h3 className="text-2xl text-white">Loading Services...</h3>
+          </div>
+        )}
+
+        {/* --- Handle Error State --- */}
+        {error && (
+          <div className="text-center">
+            <h3 className="text-2xl text-red-500">{error}</h3>
+          </div>
+        )}
+
+        {/* --- Render Services Grid --- */}
+        {!isLoading && !error && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {services.map((service) => {
+              const Icon = getServiceIcon(service.name);
+              return (
+                <Card key={service._id} className="hover-lift cursor-pointer bg-gray-800 border-gray-700">
+                  <CardHeader className="text-center">
+                    <div className="mx-auto mb-4 p-3 bg-white rounded-full w-fit">
+                      <Icon className="h-8 w-8 text-black" />
+                    </div>
+                    <CardTitle className="text-xl font-bold text-white">{service.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-center">
+                    <CardDescription className="text-gray-300 mb-4 min-h-[3rem]">
+                      {service.description || 'No description available.'}
+                    </CardDescription>
+                    <div className="space-y-2">
+                      <div className="text-2xl font-bold text-white">From ${service.price}</div>
+                      <div className="text-sm text-gray-400">{service.duration} min</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

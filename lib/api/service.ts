@@ -16,20 +16,11 @@ export interface IService {
 // ServiceData will now correctly include the optional 'description' field
 export type ServiceData = Omit<IService, '_id' | 'createdAt' | 'updatedAt'>;
 
-// --- Admin-Only API Functions ---
-
-/**
- * Create a new service.
- * @access Private (Admin only)
- */
-export async function createService(data: ServiceData): Promise<{ message: string, service: IService }> {
-    const response = await apiClient.post<{ message: string, service: IService }>('/services', data);
-    return response.data;
-}
+// --- Public API Functions ---
 
 /**
  * Get all services.
- * @access Private (Admin only)
+ * @access Public
  */
 export async function getAllServices(): Promise<IService[]> {
     const response = await apiClient.get<IService[]>('/services');
@@ -38,10 +29,21 @@ export async function getAllServices(): Promise<IService[]> {
 
 /**
  * Get a single service by its ID.
- * @access Private (Admin only)
+ * @access Public
  */
 export async function getServiceById(id: string): Promise<IService> {
     const response = await apiClient.get<IService>(`/services/${id}`);
+    return response.data;
+}
+
+// --- Admin-Only API Functions ---
+
+/**
+ * Create a new service.
+ * @access Private (Admin only)
+ */
+export async function createService(data: ServiceData): Promise<{ message: string, service: IService }> {
+    const response = await apiClient.post<{ message: string, service: IService }>('/services', data);
     return response.data;
 }
 
