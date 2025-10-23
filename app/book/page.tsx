@@ -2,6 +2,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+// --- MODIFICATION: Import useSearchParams ---
+import { useSearchParams } from 'next/navigation'; 
 import PhoneInput from 'react-phone-number-input'; // E164Number is not exported from here
 import 'react-phone-number-input/style.css';
 // FIX 1: Import E164Number from its correct source package
@@ -32,7 +34,7 @@ import { createBooking, IBooking, CreateBookingData } from '@/lib/api/booking';
 
 // --- Helper Types ---
 interface AvailableDate {
-  date: string;       // "YYYY-MM-DD"
+  date: string;     // "YYYY-MM-DD"
   display: string;    // "MMM DD"
   dayName: string;    // "ddd"
   isToday: boolean;
@@ -40,6 +42,9 @@ interface AvailableDate {
 }
 
 export default function BookAppointment() {
+  // --- MODIFICATION: Instantiate useSearchParams ---
+  const searchParams = useSearchParams();
+
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,7 +57,7 @@ export default function BookAppointment() {
   
   // --- Form & UI State ---
   const [formData, setFormData] = useState({
-    serviceId: '',
+    serviceId: '', // Initial state remains empty
     date: '',
     time: '',
     phone: '',
@@ -70,6 +75,13 @@ export default function BookAppointment() {
 
   // --- Initial Data Fetching ---
   useEffect(() => {
+    // --- MODIFICATION: Read serviceId from URL and set state ---
+    const serviceIdFromUrl = searchParams.get('serviceId');
+    if (serviceIdFromUrl) {
+      setFormData(prev => ({ ...prev, serviceId: serviceIdFromUrl }));
+    }
+    // --- END MODIFICATION ---
+
     const fetchInitialData = async () => {
       try {
         setIsLoadingServices(true);
@@ -88,7 +100,8 @@ export default function BookAppointment() {
       }
     };
     fetchInitialData();
-  }, []);
+    // --- MODIFICATION: Add searchParams to dependency array ---
+  }, [searchParams]);
 
   // --- Fetch Availability on Date Change ---
   useEffect(() => {
@@ -690,11 +703,11 @@ export default function BookAppointment() {
                   (step === 2 && (!formData.date || !formData.time)) ||
                   (step === 3 &&
                     (!formData.phone ||
-                      !isValidPhoneNumber(formData.phone) ||
-                      !showRestOfForm ||
-                      !formData.firstName ||
-                      !formData.lastName ||
-                      !formData.email))
+                     !isValidPhoneNumber(formData.phone) ||
+                     !showRestOfForm ||
+                     !formData.firstName ||
+                     !formData.lastName ||
+                     !formData.email))
                 }
                 className="bg-white text-black hover:bg-gray-200"
               >

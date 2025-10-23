@@ -8,6 +8,8 @@ import { Rat as RazorIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getAllServices, IService } from '@/lib/api/service';
 import { LucideIcon } from 'lucide-react';
+// --- MODIFICATION: Import useRouter ---
+import { useRouter } from 'next/navigation';
 
 /**
  * Helper function to determine which icon to show based on the service name.
@@ -35,6 +37,8 @@ export function Services() {
   const [services, setServices] = useState<IService[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // --- MODIFICATION: Instantiate router ---
+  const router = useRouter();
 
   useEffect(() => {
     async function loadServices() {
@@ -86,7 +90,12 @@ export function Services() {
             {services.map((service) => {
               const Icon = getServiceIcon(service.name);
               return (
-                <Card key={service._id} className="hover-lift cursor-pointer bg-gray-800 border-gray-700">
+                // --- MODIFICATION: Added onClick handler to the Card ---
+                <Card 
+                  key={service._id} 
+                  className="hover-lift cursor-pointer bg-gray-800 border-gray-700"
+                  onClick={() => router.push(`/book?serviceId=${service._id}`)}
+                >
                   <CardHeader className="text-center">
                     <div className="mx-auto mb-4 p-3 bg-white rounded-full w-fit">
                       <Icon className="h-8 w-8 text-black" />
