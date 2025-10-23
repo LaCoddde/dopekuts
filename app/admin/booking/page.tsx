@@ -18,10 +18,97 @@ import {
   CircleAlert as AlertCircle,
   PlusCircle,
 } from 'lucide-react';
-import moment from 'moment';
 import { getAllBookings, confirmPayment, cancelBooking, IBooking } from '@/lib/api/booking';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import BookAppointmentPage from '@/app/book/page';
+
+/** ========== Date/Time helpers (no external libs) ========== */
+
+// Format YYYY-MM for a Date (local)
+function toYYYYMM(d: Date) {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+// Parse "YYYY-MM-DD" safely into a local Date at 00:00
+function parseLocalDateOnly(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map((v) => parseInt(v, 10));
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+}
+
+// Parse "h:mm A" into 24h {hours, minutes}, defaults to 0:0 if bad
+function parseTime12hTo24h(timeStr?: string): { hours: number; minutes: number } {
+  if (!timeStr) return { hours: 0, minutes: 0 };
+  const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (!m) return { hours: 0, minutes: 0 };
+  let hours = parseInt(m[1], 10);
+  const minutes = parseInt(m[2], 10);
+  const ampm = m[3].toUpperCase();
+  if (ampm === 'PM' && hours !== 12) hours += 12;
+  if (ampm === 'AM' && hours === 12) hours = 0;
+  return { hours, minutes };
+}
+
+// Combine booking date ("YYYY-MM-DD") and time ("h:mm A") to a local Date
+function toBookingDateTime(b: IBooking): Date {
+  const dateOnly = parseLocalDateOnly(b.date);
+  const { hours, minutes } = parseTime12hTo24h(b.time as unknown as string);
+  return new Date(
+    dateOnly.getFullYear(),
+    dateOnly.getMonth(),
+    dateOnly.getDate(),
+    hours,
+    minutes,
+    0,
+    0
+  );
+}
+
+// Compare only the date part (ignores time)
+function isSameLocalDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+// Set to start of local day
+function startOfLocalDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+// End of month for year & month (local)
+function endOfMonthLocal(year: number, monthIndex0: number) {
+  return new Date(year, monthIndex0 + 1, 0, 23, 59, 59, 999);
+}
+
+// Inclusive check for date-only range (compare by date parts)
+function isOnOrAfterDate(a: Date, fromInclusive: Date) {
+  const A = startOfLocalDay(a);
+  const F = startOfLocalDay(fromInclusive);
+  return A.getTime() >= F.getTime();
+}
+function isOnOrBeforeDate(a: Date, toInclusive: Date) {
+  const A = startOfLocalDay(a);
+  const T = startOfLocalDay(toInclusive);
+  return A.getTime() <= T.getTime();
+}
+
+// Add days (date-only)
+function addDaysLocal(d: Date, days: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
+// Human formatting respecting user locale
+const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+
+/** =========================================================== */
 
 export default function BookingManagement() {
   // State
@@ -36,30 +123,16 @@ export default function BookingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'time' | 'customer' | 'service'>('date');
-  const [monthFilter, setMonthFilter] = useState(moment().format('YYYY-MM')); // current month
 
-  // Helpers
-  const toBookingDateTime = (b: IBooking) => {
-    // Build a precise datetime using booking.date and booking.time (e.g., "h:mm A")
-    const date = moment(b.date); // accept ISO or YYYY-MM-DD
-    const time = moment(b.time, 'h:mm A', true);
-    const dt = date.clone();
-
-    if (time.isValid()) {
-      dt.hour(time.hour()).minute(time.minute()).second(0).millisecond(0);
-    } else {
-      // Fallback: if time isn't parsable, assume start of day
-      dt.startOf('day');
-    }
-    return dt;
-  };
+  // Default to current month in user's local time
+  const [monthFilter, setMonthFilter] = useState(toYYYYMM(new Date()));
 
   // Fetch
   const fetchBookings = async () => {
     try {
       setIsLoading(true);
       const fetchedBookings = await getAllBookings();
-      setBookings(fetchedBookings);
+      setBookings(fetchedBookings || []);
       setError(null);
     } catch (err) {
       console.error('Failed to fetch bookings:', err);
@@ -112,7 +185,7 @@ export default function BookingManagement() {
     try {
       const { booking: updatedBooking } = await confirmPayment(bookingId);
       setBookings((prev) =>
-        prev.map((b) => (b._id === bookingId ? { ...b, status: updatedBooking.status } : b)),
+        prev.map((b) => (b._id === bookingId ? { ...b, status: updatedBooking.status } : b))
       );
     } catch (err) {
       console.error('Failed to confirm booking:', err);
@@ -135,80 +208,108 @@ export default function BookingManagement() {
     alert(`Reschedule booking #${bookingId} - This would open a date/time picker modal`);
   };
 
-  // Months for filter
+  // Available months from data + ensure current month is present
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>();
-    bookings.forEach((b) => {
-      monthSet.add(moment(b.date).format('YYYY-MM'));
-    });
-    monthSet.add(moment().format('YYYY-MM'));
-    return Array.from(monthSet).sort().reverse();
+    for (const b of bookings) {
+      const d = parseLocalDateOnly(b.date);
+      monthSet.add(toYYYYMM(d));
+    }
+    monthSet.add(toYYYYMM(new Date()));
+    return Array.from(monthSet).sort().reverse(); // newest first
   }, [bookings]);
 
-  // Filter + sort
+  // Filter + sort (native Date, local TZ)
   const filteredAndSortedBookings = (() => {
-    const now = moment();
-    const endOfSelectedMonth = moment(monthFilter, 'YYYY-MM').endOf('month');
-    const isCurrentMonth = moment(monthFilter, 'YYYY-MM').isSame(now, 'month');
+    const now = new Date();
+    const todayStart = startOfLocalDay(now);
+    const [selY, selM] = monthFilter !== 'all' ? monthFilter.split('-').map((v) => parseInt(v, 10)) : [NaN, NaN];
+    const isMonthSelected = monthFilter !== 'all';
+    const isCurrentMonthSelected =
+      isMonthSelected &&
+      selY === now.getFullYear() &&
+      (selM - 1) === now.getMonth();
+
+    const monthStart = isMonthSelected ? new Date(selY, (selM || 1) - 1, 1, 0, 0, 0, 0) : null;
+    const monthEnd = isMonthSelected ? endOfMonthLocal(selY!, (selM! - 1)) : null;
 
     let filtered = bookings.filter((booking) => {
-      const customerFullName = `${booking.firstName} ${booking.lastName}`;
-      const matchesSearch =
-        customerFullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        booking.phone.includes(searchTerm) ||
-        booking.service.toLowerCase().includes(searchTerm.toLowerCase());
+      const bookingDT = toBookingDateTime(booking);
+      const bookingDateOnly = startOfLocalDay(bookingDT);
 
+      // search
+      const customerFullName = `${booking.firstName} ${booking.lastName}`.toLowerCase();
+      const matchesSearch =
+        customerFullName.includes(searchTerm.toLowerCase()) ||
+        (booking.phone || '').includes(searchTerm) ||
+        (booking.service || '').toLowerCase().includes(searchTerm.toLowerCase());
+
+      // status
       const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
 
-      // Build combined datetime for precise comparisons
-      const bookingDT = toBookingDateTime(booking);
-
+      // date/month logic
       let matchesDate = true;
-      if (monthFilter !== 'all') {
-        if (isCurrentMonth) {
-          // From NOW (not start of day) through end of this month (inclusive)
-          matchesDate = bookingDT.isBetween(now, endOfSelectedMonth, undefined, '[]');
+      if (isMonthSelected && monthStart && monthEnd) {
+        if (isCurrentMonthSelected) {
+          // Current month: show from TODAY (date-only) to end of month, inclusive
+          matchesDate =
+            isOnOrAfterDate(bookingDateOnly, todayStart) && isOnOrBeforeDate(bookingDateOnly, monthEnd);
         } else {
-          // Entire selected month
-          matchesDate = bookingDT.isSame(moment(monthFilter, 'YYYY-MM'), 'month');
+          // Other month: show full month, inclusive
+          matchesDate =
+            isOnOrAfterDate(bookingDateOnly, monthStart) && isOnOrBeforeDate(bookingDateOnly, monthEnd);
         }
       }
 
       return matchesSearch && matchesStatus && matchesDate;
     });
 
-    // Sorting
+    // Sort: by date ascending, then time ascending (always deterministic)
     filtered.sort((a, b) => {
       const aDT = toBookingDateTime(a);
       const bDT = toBookingDateTime(b);
 
-      switch (sortBy) {
-        case 'date': {
-          // Primary: by datetime ASC (closest upcoming first)
-          const cmp = aDT.valueOf() - bDT.valueOf();
-          if (cmp !== 0) return cmp;
-          // Secondary: by customer name to stabilize
-          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-        }
-        case 'time':
-          return moment(a.time, 'h:mm A').valueOf() - moment(b.time, 'h:mm A').valueOf();
-        case 'customer':
-          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-        case 'service':
-          return a.service.localeCompare(b.service);
-        default:
-          return 0;
+      if (sortBy === 'customer') {
+        return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
       }
+      if (sortBy === 'service') {
+        return (a.service || '').localeCompare(b.service || '');
+      }
+      if (sortBy === 'time') {
+        // Only compare time (same day ordering will follow time)
+        const aT = parseTime12hTo24h(a.time as unknown as string);
+        const bT = parseTime12hTo24h(b.time as unknown as string);
+        if (aT.hours !== bT.hours) return aT.hours - bT.hours;
+        if (aT.minutes !== bT.minutes) return aT.minutes - bT.minutes;
+        // tie-breaker by date
+        return aDT.getTime() - bDT.getTime();
+      }
+
+      // Default: 'date' — by full datetime ascending
+      const cmp = aDT.getTime() - bDT.getTime();
+      if (cmp !== 0) return cmp;
+
+      // Stabilize sort: customer then service
+      const nameCmp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      if (nameCmp !== 0) return nameCmp;
+      return (a.service || '').localeCompare(b.service || '');
     });
 
     return filtered;
   })();
 
-  // Dashboard numbers (use combined datetime to define “today” more precisely if needed)
-  const todayBookings = bookings.filter((b) => moment(b.date).isSame(moment(), 'day'));
-  const upcomingBookings = bookings.filter((b) =>
-    moment(b.date).isBetween(moment(), moment().add(7, 'days'), 'day', '[]'),
-  );
+  // Dashboard numbers (native)
+  const todayBookings = bookings.filter((b) => {
+    const dt = toBookingDateTime(b);
+    return isSameLocalDay(dt, new Date());
+  });
+
+  const upcomingBookings = bookings.filter((b) => {
+    const dt = startOfLocalDay(toBookingDateTime(b));
+    const today = startOfLocalDay(new Date());
+    const in7Days = addDaysLocal(today, 7);
+    return isOnOrAfterDate(dt, today) && isOnOrBeforeDate(dt, in7Days);
+  });
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -249,7 +350,7 @@ export default function BookingManagement() {
               $
               {todayBookings.reduce(
                 (sum, booking) => (booking.status === 'confirmed' ? sum + booking.price : sum),
-                0,
+                0
               )}
             </div>
             <p className="text-sm text-gray-400">From confirmed</p>
@@ -301,11 +402,16 @@ export default function BookingManagement() {
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm"
                   >
                     <option value="all">All Months</option>
-                    {availableMonths.map((month) => (
-                      <option key={month} value={month}>
-                        {moment(month, 'YYYY-MM').format('MMMM YYYY')}
-                      </option>
-                    ))}
+                    {availableMonths.map((month) => {
+                      const [y, m] = month.split('-').map((v) => parseInt(v, 10));
+                      const temp = new Date(y, (m || 1) - 1, 1);
+                      const label = temp.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                      return (
+                        <option key={month} value={month}>
+                          {label}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -363,7 +469,7 @@ export default function BookingManagement() {
                 </div>
               ) : (
                 filteredAndSortedBookings.map((booking) => {
-                  const bookingDT = toBookingDateTime(booking);
+                  const dt = toBookingDateTime(booking);
                   return (
                     <div
                       key={booking._id}
@@ -385,11 +491,16 @@ export default function BookingManagement() {
                             </div>
                             <div className="flex items-center text-gray-300">
                               <Calendar className="h-4 w-4 mr-2" />
-                              {bookingDT.format('MMM DD, YYYY')}
+                              {dateFmt.format(dt)}
                             </div>
                             <div className="flex items-center text-gray-300">
                               <Clock className="h-4 w-4 mr-2" />
-                              {bookingDT.format('h:mm A')} ({booking.duration}min)
+                              {dt.toLocaleTimeString(undefined, {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              })}{' '}
+                              ({booking.duration}min)
                             </div>
                             <div className="flex items-center text-gray-300">
                               <Phone className="h-4 w-4 mr-2" />
