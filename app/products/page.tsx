@@ -1,93 +1,68 @@
+// app/products/page.tsx
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingCart, Star } from 'lucide-react';
+// Updated icon import
+import { ExternalLink } from 'lucide-react'; 
+import { useState, useEffect } from 'react';
+import { getAllProducts, IProduct } from '@/lib/api/product';
 
-const products = [
-  {
-    id: 1,
-    name: 'Premium Hair Pomade',
-    description: 'Strong hold, medium shine pomade for classic styling',
-    price: 25,
-    originalPrice: 30,
-    rating: 4.8,
-    reviews: 124,
-    image: 'https://images.pexels.com/photos/3992133/pexels-photo-3992133.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Hair Products',
-    inStock: true
-  },
-  {
-    id: 2,
-    name: 'Beard Oil - Sandalwood',
-    description: 'Nourishing beard oil with natural sandalwood scent',
-    price: 20,
-    originalPrice: 25,
-    rating: 4.9,
-    reviews: 89,
-    image: 'https://images.pexels.com/photos/4792065/pexels-photo-4792065.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Beard Care',
-    inStock: true
-  },
-  {
-    id: 3,
-    name: 'Clay Hair Styling Paste',
-    description: 'Matte finish clay for textured, natural-looking styles',
-    price: 28,
-    originalPrice: null,
-    rating: 4.7,
-    reviews: 156,
-    image: 'https://images.pexels.com/photos/3992133/pexels-photo-3992133.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Hair Products',
-    inStock: true
-  },
-  {
-    id: 4,
-    name: 'Shampoo & Conditioner Set',
-    description: 'Professional grade shampoo and conditioner duo',
-    price: 35,
-    originalPrice: 45,
-    rating: 4.6,
-    reviews: 203,
-    image: 'https://images.pexels.com/photos/4465831/pexels-photo-4465831.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Hair Care',
-    inStock: false
-  },
-  {
-    id: 5,
-    name: 'Beard Balm - Cedarwood',
-    description: 'Conditioning balm for beard styling and maintenance',
-    price: 22,
-    originalPrice: null,
-    rating: 4.8,
-    reviews: 78,
-    image: 'https://images.pexels.com/photos/4792065/pexels-photo-4792065.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Beard Care',
-    inStock: true
-  },
-  {
-    id: 6,
-    name: 'Premium Hair Wax',
-    description: 'Flexible hold wax for versatile styling options',
-    price: 26,
-    originalPrice: null,
-    rating: 4.5,
-    reviews: 92,
-    image: 'https://images.pexels.com/photos/3992133/pexels-photo-3992133.jpeg?auto=compress&cs=tinysrgb&w=400',
-    category: 'Hair Products',
-    inStock: true
-  }
-];
+// Define a placeholder image for products without one
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/400x400?text=No+Image';
 
 export default function Products() {
+  // State for storing products, loading status, and errors
+  const [products, setProducts] = useState<IProduct[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch products on component mount
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        setIsLoading(true);
+        const apiProducts = await getAllProducts();
+        setProducts(apiProducts);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch products:', err);
+        setError('Could not load products. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadProducts();
+  }, []); // Empty dependency array ensures this runs only once
+
+  // --- Render Loading State ---
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 py-16 flex justify-center items-center">
+        <h2 className="text-3xl font-bold text-white">Loading Products...</h2>
+      </div>
+    );
+  }
+
+  // --- Render Error State ---
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 py-16 flex justify-center items-center">
+        <h2 className="text-3xl font-bold text-red-500">{error}</h2>
+      </div>
+    );
+  }
+
+  // --- Render Products Page ---
   return (
     <div className="min-h-screen bg-gray-900 py-16">
       <div className="container-max section-padding">
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-white mb-6">Hair Products</h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Professional-grade products used and trusted by our barbers. 
+            Professional-grade products used and trusted by our barbers.
             Get the same quality styling products we use in our shop.
           </p>
         </div>
@@ -95,73 +70,55 @@ export default function Products() {
         {/* Product Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {products.map((product) => (
-            <Card key={product.id} className="hover-lift overflow-hidden bg-gray-800 border-gray-700">
+            <Card key={product._id} className="hover-lift overflow-hidden bg-gray-800 border-gray-700">
               <div className="aspect-square relative">
                 <img
-                  src={product.image}
+                  src={product.image || PLACEHOLDER_IMAGE}
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
-                {product.originalPrice && (
-                  <Badge className="absolute top-4 left-4 bg-red-500">
-                    Sale
-                  </Badge>
-                )}
-                {!product.inStock && (
-                  <Badge className="absolute top-4 right-4 bg-gray-500">
-                    Out of Stock
-                  </Badge>
-                )}
               </div>
               
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
                     <CardTitle className="text-lg text-white">{product.name}</CardTitle>
-                    <Badge variant="outline" className="mt-2">
-                      {product.category}
-                    </Badge>
                   </div>
                 </div>
                 <CardDescription className="mt-2 text-gray-300">
-                  {product.description}
+                  {product.description || 'No description available.'}
                 </CardDescription>
               </CardHeader>
               
               <CardContent>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex items-center">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="ml-1 text-sm font-medium">{product.rating}</span>
-                  </div>
-                  <span className="text-sm text-gray-400">({product.reviews} reviews)</span>
-                </div>
-                
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-bold text-white">${product.price}</span>
-                    {product.originalPrice && (
-                      <span className="text-lg text-gray-400 line-through">
-                        ${product.originalPrice}
-                      </span>
-                    )}
                   </div>
                   
+                  {/* --- MODIFIED BUTTON --- */}
                   <Button 
                     size="sm" 
-                    disabled={!product.inStock}
                     className="flex items-center gap-2"
+                    onClick={() => {
+                      // Prioritize affiliate link, but fall back to the main product link
+                      const targetLink = product.affiliateLink || product.link;
+                      // Open the link in a new tab
+                      window.open(targetLink, '_blank', 'noopener,noreferrer');
+                    }}
                   >
-                    <ShoppingCart className="h-4 w-4" />
-                    {product.inStock ? 'Add to Cart' : 'Out of Stock'}
+                    <ExternalLink className="h-4 w-4" />
+                    Get Now
                   </Button>
+                  {/* --- END MODIFIED BUTTON --- */}
+
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* Info Section */}
+        {/* Info Section (Unchanged) */}
         <div className="mt-16 bg-gray-50 p-8 rounded-lg">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-white mb-4">Why Choose Our Products?</h2>
