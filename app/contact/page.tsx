@@ -143,7 +143,7 @@ export default function Contact() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-300 mb-4">roy@dopecuts.ca</p>
+                <p className="text-gray-300 mb-4">leeroy@dopecuts.ca</p>
                 <p className="text-sm text-gray-400">
                   Send us an email and we'll get back to you within 24 hours
                 </p>

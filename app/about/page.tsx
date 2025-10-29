@@ -3,7 +3,7 @@ import Image from 'next/image';
 
 export default function About() {
   const barbers = [
-    { name: 'Le Roy', role: 'Master Barber & Owner', experience: '15+ years', image: '/barber2.png' },
+    { name: 'LeeRoy', role: 'Master Barber & Owner', experience: '15+ years', image: '/barber2.png' },
     { name: 'Chuks Pro', role: 'Senior Barber', experience: '8+ years', image: '/barber1.png' },
     { name: 'Gabriel Taylor', role: 'Barber Stylist', experience: '5+ years', image: '/barber3.png' },
   ];

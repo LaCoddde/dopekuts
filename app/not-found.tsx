@@ -28,28 +28,28 @@ export default function NotFound() {
 
           {/* Action Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-            <Button asChild variant="outline" className="border-gray-600 text-white hover:bg-gray-800 p-6 h-auto flex-col space-y-2">
+            <Button asChild variant="outline" className="border-gray-600 bg-black-600 text-white hover:bg-white hover:text-black-600 p-6 h-auto flex-col space-y-2">
               <Link href="/">
                 <Home className="h-6 w-6" />
                 <span>Home</span>
               </Link>
             </Button>
             
-            <Button asChild variant="outline" className="border-gray-600 text-white hover:bg-gray-800 p-6 h-auto flex-col space-y-2">
+            <Button asChild variant="outline" className="border-gray-600 bg-black-600 text-white hover:bg-white hover:text-black-600 p-6 h-auto flex-col space-y-2">
               <Link href="/book">
                 <Calendar className="h-6 w-6" />
                 <span>Book Now</span>
               </Link>
             </Button>
             
-            <Button asChild variant="outline" className="border-gray-600 text-white hover:bg-gray-800 p-6 h-auto flex-col space-y-2">
+            <Button asChild variant="outline" className="border-gray-600 bg-black-600 text-white hover:bg-white hover:text-black-600 p-6 h-auto flex-col space-y-2">
               <Link href="/gallery">
                 <Search className="h-6 w-6" />
                 <span>Gallery</span>
               </Link>
             </Button>
             
-            <Button asChild variant="outline" className="border-gray-600 text-white hover:bg-gray-800 p-6 h-auto flex-col space-y-2">
+            <Button asChild variant="outline" className="border-gray-600 bg-black-600 text-white hover:bg-white hover:text-black-600 p-6 h-auto flex-col space-y-2">
               <Link href="/contact">
                 <Phone className="h-6 w-6" />
                 <span>Contact</span>
@@ -64,18 +64,18 @@ export default function NotFound() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 text-gray-300">
               <a 
-                href="tel:+15551234567" 
+                href="tel:+13653233680" 
                 className="flex items-center space-x-2 hover:text-white transition-colors duration-200"
               >
                 <Phone className="h-4 w-4" />
-                <span>(555) 123-4567</span>
+                <span>(365) 323-3680</span>
               </a>
               <div className="hidden sm:block w-1 h-1 bg-gray-600 rounded-full"></div>
               <a 
-                href="mailto:roy@dopecuts.ca" 
+                href="mailto:leeroy@dopecuts.ca" 
                 className="hover:text-white transition-colors duration-200"
               >
-                roy@dopecuts.ca
+                leeleeroy@dopecuts.ca
               </a>
             </div>
           </div>

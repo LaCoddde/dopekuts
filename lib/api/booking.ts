@@ -1,4 +1,3 @@
-// dopekuts/lib/api/booking.ts
 import apiClient from './apiClient';
 
 // --- Interfaces ---
@@ -35,8 +34,10 @@ export interface CreateBookingData {
 
 /**
  * For public self-service update:
- * - Provide either `email` (matches booking.email)
- *   OR `phone` + `otp` (from the phone OTP flow).
+ * Provide either:
+ *   - Authorization: Bearer <token> (recommended)
+ *   - OR `email` (matches booking.email)
+ *   - OR `phone` + `otp` (from phone OTP flow)
  * Admins do not need email/phone/otp.
  */
 export interface UpdateBookingData {
@@ -46,15 +47,17 @@ export interface UpdateBookingData {
   phone?: string;
   firstName?: string;
   lastName?: string;
-  email?: string; // public path: ONE of (email) OR (phone + otp)
+  email?: string; // public legacy: ONE of (email) OR (phone + otp)
   notes?: string;
-  otp?: string;   // used with phone for OTP verification
+  otp?: string;   // used with phone for OTP verification (legacy)
 }
 
 /**
  * For public self-service cancel:
- * - Provide either `email`
- *   OR `phone` + `otp`.
+ * Provide either:
+ *   - Authorization: Bearer <token> (recommended)
+ *   - OR `email`
+ *   - OR `phone` + `otp`
  * Admins do not need a body.
  */
 export interface CancelBookingData {
@@ -70,6 +73,30 @@ export interface PhoneOtpStartPayload {
 export interface PhoneOtpVerifyPayload {
   phone: string;
   otp: string;
+}
+
+export interface EmailOtpStartPayload {
+  email: string;
+}
+
+export interface EmailOtpVerifyPayload {
+  email: string;
+  otp: string;
+}
+
+export interface VerifyResponse {
+  message: string;
+  token: string; // manage token (JWT)
+}
+
+export interface ManageLookupResponse {
+  booking: IBooking;
+}
+
+// --- Helpers ---
+
+function authHeader(token?: string) {
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 // --- API Functions ---
@@ -89,11 +116,33 @@ export async function createBooking(
 }
 
 /**
- * Get an upcoming booking by the user's phone number.
+ * Get an upcoming booking by the user's phone number. (Legacy path)
  * @access Public
  */
 export async function getBookingByPhone(phone: string): Promise<IBooking> {
   const response = await apiClient.get<IBooking>(`/bookings/phone/${phone}`);
+  return response.data;
+}
+
+/**
+ * Get an upcoming booking by the user's email. (Legacy path)
+ * @access Public
+ */
+export async function getBookingByEmail(email: string): Promise<IBooking> {
+  const response = await apiClient.get<IBooking>(`/bookings/email/${encodeURIComponent(email)}`);
+  return response.data;
+}
+
+/**
+ * Token-based manage lookup for the current user's upcoming booking.
+ * Pass the manage token from verifyPhoneOtp/verifyEmailOtp.
+ * @access Public (with token)
+ */
+export async function getManageBooking(token: string): Promise<ManageLookupResponse> {
+  const response = await apiClient.get<ManageLookupResponse>(
+    '/bookings/manage',
+    { headers: authHeader(token) }
+  );
   return response.data;
 }
 
@@ -103,31 +152,67 @@ export async function getBookingByPhone(phone: string): Promise<IBooking> {
  * @access Public
  */
 export async function startPhoneOtp(payload: PhoneOtpStartPayload): Promise<{ message: string }> {
-  const response = await apiClient.post<{ message: string }>(`/bookings/phone-otp/start`, payload);
+  const response = await apiClient.post<{ message: string }>(
+    `/bookings/phone-otp/start`,
+    payload
+  );
   return response.data;
 }
 
 /**
  * Verify phone OTP for self-service (reschedule/cancel).
+ * Returns a short-lived manage token.
  * @access Public
  */
-export async function verifyPhoneOtp(payload: PhoneOtpVerifyPayload): Promise<{ message: string }> {
-  const response = await apiClient.post<{ message: string }>(`/bookings/phone-otp/verify`, payload);
+export async function verifyPhoneOtp(payload: PhoneOtpVerifyPayload): Promise<VerifyResponse> {
+  const response = await apiClient.post<VerifyResponse>(
+    `/bookings/phone-otp/verify`,
+    payload
+  );
+  return response.data;
+}
+
+/**
+ * Start email OTP for self-service (reschedule/cancel).
+ * Sends a 6-digit code via email.
+ * @access Public
+ */
+export async function startEmailOtp(payload: EmailOtpStartPayload): Promise<{ message: string }> {
+  const response = await apiClient.post<{ message: string }>(
+    `/bookings/email-otp/start`,
+    payload
+  );
+  return response.data;
+}
+
+/**
+ * Verify email OTP for self-service (reschedule/cancel).
+ * Returns a short-lived manage token.
+ * @access Public
+ */
+export async function verifyEmailOtp(payload: EmailOtpVerifyPayload): Promise<VerifyResponse> {
+  const response = await apiClient.post<VerifyResponse>(
+    `/bookings/email-otp/verify`,
+    payload
+  );
   return response.data;
 }
 
 /**
  * Update a booking as a customer (public).
- * Provide either `email` OR `phone` + `otp` in `data`.
+ * Preferred: pass `token` to authorize with Bearer; body can be changes only.
+ * Legacy: omit token and include either `email` OR `phone` + `otp` in `data`.
  * @access Public
  */
 export async function updateBookingPublic(
   id: string,
-  data: UpdateBookingData
+  data: UpdateBookingData,
+  token?: string
 ): Promise<{ message: string; booking: IBooking }> {
   const response = await apiClient.put<{ message: string; booking: IBooking }>(
     `/bookings/manage/${id}`,
-    data
+    data,
+    { headers: authHeader(token) }
   );
   return response.data;
 }
@@ -149,16 +234,19 @@ export async function updateBookingAdmin(
 
 /**
  * Cancel a booking as a customer (public).
- * Provide either `email` OR `phone` + `otp` in `data`.
+ * Preferred: pass `token` to authorize with Bearer; body can be empty.
+ * Legacy: omit token and include either `email` OR `phone` + `otp` in `data`.
  * @access Public
  */
 export async function cancelBookingPublic(
   id: string,
-  data: CancelBookingData
+  data: CancelBookingData = {},
+  token?: string
 ): Promise<{ message: string }> {
   const response = await apiClient.patch<{ message: string }>(
     `/bookings/manage/${id}/cancel`,
-    data
+    data,
+    { headers: authHeader(token) }
   );
   return response.data;
 }
@@ -168,7 +256,9 @@ export async function cancelBookingPublic(
  * @access Private (Admin only)
  */
 export async function cancelBookingAdmin(id: string): Promise<{ message: string }> {
-  const response = await apiClient.patch<{ message: string }>(`/bookings/${id}/cancel`);
+  const response = await apiClient.patch<{ message: string }>(
+    `/bookings/${id}/cancel`
+  );
   return response.data;
 }
 

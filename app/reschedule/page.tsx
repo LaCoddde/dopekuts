@@ -1,10 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import { isValidPhoneNumber } from 'libphonenumber-js';
-import { Calendar, CheckCircle2, Clock, ChevronLeft, ChevronRight, Phone, Mail } from 'lucide-react';
+import {
+  Calendar,
+  CheckCircle2,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Phone,
+  XCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,43 +26,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import moment from 'moment';
 
-// --- Mock data & helpers (replace with real data fetches/integrations) ---
+// Dialog (shadcn/ui)
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
 
-type Service = {
-  id: string;
-  name: string;
-  price: number;
-  duration: number; // minutes
-};
+// API
+import {
+  startPhoneOtp,
+  verifyPhoneOtp,
+  startEmailOtp,
+  verifyEmailOtp,
+  getManageBooking,
+  updateBookingPublic,
+  cancelBookingPublic,
+  type IBooking,
+} from '@/lib/api/booking';
 
-const services: Service[] = [
-  { id: 'classic', name: 'Classic Cut', price: 35, duration: 45 },
-  { id: 'beard', name: 'Beard Grooming', price: 25, duration: 30 },
-  { id: 'premium', name: 'Premium Package', price: 65, duration: 90 },
-  { id: 'express', name: 'Express Service', price: 25, duration: 20 },
-];
-
-type Appointment = {
-  id: string;
-  serviceId: string;
-  date: string; // YYYY-MM-DD
-  time: string; // e.g., '1:30 PM'
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  email?: string;
-};
-
-const mockExistingAppointment: Appointment = {
-  id: 'apt_12345',
-  serviceId: 'classic',
-  date: moment().add(2, 'days').format('YYYY-MM-DD'),
-  time: '1:30 PM',
-  firstName: 'Jordan',
-  lastName: 'Smith',
-  phone: '+14165551234',
-  email: 'jordan@example.com',
-};
+// --- Helpers ---
 
 // Generate time slots with 30-minute intervals
 const generateTimeSlots = () => {
@@ -97,9 +93,39 @@ const generateAvailableDates = () => {
 const validateEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+type Appointment = {
+  id: string;
+  service: string;
+  price: number;
+  duration: number;
+  date: string; // YYYY-MM-DD
+  time: string; // '1:30 PM'
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+};
+
+function normalizeBooking(b: IBooking): Appointment {
+  return {
+    id: b._id,
+    service: b.service,
+    price: b.price,
+    duration: b.duration,
+    date: moment(b.date).format('YYYY-MM-DD'),
+    time: b.time,
+    firstName: b.firstName,
+    lastName: b.lastName,
+    phone: b.phone,
+    email: b.email,
+  };
+}
+
 // --- Component ---
 
 export default function RescheduleAppointment() {
+  const router = useRouter();
+
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Identity verification
@@ -109,8 +135,9 @@ export default function RescheduleAppointment() {
   const [codeSent, setCodeSent] = useState(false);
   const [codeInput, setCodeInput] = useState('');
   const [verified, setVerified] = useState(false);
+  const [manageToken, setManageToken] = useState<string>('');
 
-  // Existing appointment (normally fetched after verification)
+  // Existing appointment (fetched after verification)
   const [appointment, setAppointment] = useState<Appointment | null>(null);
 
   // New schedule selection
@@ -122,51 +149,121 @@ export default function RescheduleAppointment() {
   // Finalize
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Lock body scroll on success overlay (if we decide to overlay); here success is a full-screen view, so no lock needed.
+  // Cancel modal + success
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showCancelSuccess, setShowCancelSuccess] = useState(false);
 
-  // Simulate sending code
-  const handleSendCode = () => {
-    if (verifyMethod === 'phone') {
-      if (!phone || !isValidPhoneNumber(phone)) return;
-    } else {
-      if (!email || !validateEmail(email)) return;
-    }
-    // Send OTP here (real integration). Mock:
-    setCodeSent(true);
-  };
-
-  const handleVerifyCode = () => {
-    // In production, verify server-side. Mock code = 123456
-    if (codeInput.trim() === '123456') {
-      setVerified(true);
-      // Fetch appointment linked to that phone/email. Mock:
-      setAppointment(mockExistingAppointment);
-      // Preselect current appointment date/time for convenience
-      setNewDate(mockExistingAppointment.date);
-      setNewTime(mockExistingAppointment.time);
-      setStep(2);
-    }
-  };
-
-  const selectedService: Service | undefined = useMemo(
-    () => (appointment ? services.find((s) => s.id === appointment.serviceId) : undefined),
-    [appointment]
-  );
+  // UX state
+  const [loadingSend, setLoadingSend] = useState(false);
+  const [loadingVerify, setLoadingVerify] = useState(false);
+  const [loadingUpdate, setLoadingUpdate] = useState(false);
+  const [loadingCancel, setLoadingCancel] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   const canContinueFromStep2 = Boolean(newDate && newTime);
   const canContinueFromStep1 = verified; // You only move on once verified
 
-  const handleConfirmReschedule = () => {
-    if (!appointment || !selectedService || !newDate || !newTime) return;
-    // Call API to reschedule here.
-    // Mock:
-    setShowSuccess(true);
-    setStep(4);
+  // API: Send OTP
+  const handleSendCode = async () => {
+    setErrorMsg('');
+    try {
+      setLoadingSend(true);
+      if (verifyMethod === 'phone') {
+        if (!phone || !isValidPhoneNumber(phone)) return;
+        await startPhoneOtp({ phone });
+      } else {
+        if (!email || !validateEmail(email)) return;
+        await startEmailOtp({ email });
+      }
+      setCodeSent(true);
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || 'Failed to send code. Try again.');
+    } finally {
+      setLoadingSend(false);
+    }
   };
 
+  // API: Verify OTP → get token → fetch booking
+  const handleVerifyCode = async () => {
+    setErrorMsg('');
+    if (codeInput.trim().length !== 6) return;
+    try {
+      setLoadingVerify(true);
+      let token = '';
+      if (verifyMethod === 'phone') {
+        const out = await verifyPhoneOtp({ phone, otp: codeInput.trim() });
+        token = out.token;
+      } else {
+        const out = await verifyEmailOtp({ email, otp: codeInput.trim() });
+        token = out.token;
+      }
+      setManageToken(token);
+
+      const manage = await getManageBooking(token);
+      const appt = normalizeBooking(manage.booking);
+      setAppointment(appt);
+
+      // Preselect current appointment date/time for convenience
+      setNewDate(appt.date);
+      setNewTime(appt.time);
+
+      setVerified(true);
+      setStep(2);
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || 'Verification failed. Check your code and try again.');
+    } finally {
+      setLoadingVerify(false);
+    }
+  };
+
+  // API: Reschedule
+  const handleConfirmReschedule = async () => {
+    if (!appointment || !newDate || !newTime || !manageToken) return;
+    setErrorMsg('');
+    try {
+      setLoadingUpdate(true);
+      const { booking } = await updateBookingPublic(
+        appointment.id,
+        { date: newDate, time: newTime },
+        manageToken
+      );
+      const updated = normalizeBooking(booking);
+      setAppointment(updated);
+      setShowSuccess(true);
+      setStep(4);
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || 'Failed to reschedule appointment.');
+    } finally {
+      setLoadingUpdate(false);
+    }
+  };
+
+  // API: Cancel
+  const handleConfirmCancel = async () => {
+    if (!appointment || !manageToken) return;
+    setErrorMsg('');
+    try {
+      setLoadingCancel(true);
+      await cancelBookingPublic(appointment.id, {}, manageToken);
+      setShowCancelModal(false);
+      setShowCancelSuccess(true);
+      // Optionally clear appointment state afterwards
+      setAppointment(null);
+      setNewDate('');
+      setNewTime('');
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || 'Failed to cancel appointment.');
+    } finally {
+      setLoadingCancel(false);
+    }
+  };
+
+  // Redirect to home after the user acknowledges success screens
   const handleDone = () => {
-    // Close or route away
     setShowSuccess(false);
+    setShowCancelSuccess(false);
+    // redirect to home
+    router.push('/');
   };
 
   // UI helpers
@@ -180,13 +277,11 @@ export default function RescheduleAppointment() {
             'w-8 h-8 lg:w-12 lg:h-12 rounded-full flex items-center justify-center',
             'text-xs lg:text-sm font-bold leading-none tracking-tight',
             'transition-all duration-300 select-none',
-            isCompletedOrActive ? 'bg-white shadow-lg' : 'bg-gray-700 border-2 border-gray-600',
+            isCompletedOrActive ? 'bg-white text-black shadow-lg' : 'bg-gray-700 text-gray-400 border-2 border-gray-600',
           ].join(' ')}
           aria-current={isActive ? 'step' : undefined}
         >
-          <span className="pointer-events-none" style={{ color: isCompletedOrActive ? '#000000' : '#D1D5DB' }}>
-            {index}
-          </span>
+          {index}
         </div>
         {index < 4 && (
           <div className={`w-8 lg:w-16 h-1 transition-all duration-300 ${current > index ? 'bg-white' : 'bg-gray-700'}`} />
@@ -195,6 +290,7 @@ export default function RescheduleAppointment() {
     );
   };
 
+  // Success screen (rescheduled)
   if (showSuccess) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
@@ -215,7 +311,7 @@ export default function RescheduleAppointment() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-300">Service:</span>
-                    <span className="text-white font-medium">{selectedService?.name}</span>
+                    <span className="text-white font-medium">{appointment?.service}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-300">Date:</span>
@@ -228,8 +324,34 @@ export default function RescheduleAppointment() {
                 </div>
               </div>
 
-              <Button onClick={handleDone} className="w-full bg-white hover:bg-gray-200">
-                <span className="text-black font-medium">Done</span>
+              <Button onClick={handleDone} className="w-full bg-white text-black hover:bg-gray-200">
+                Done
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Success screen (canceled)
+  if (showCancelSuccess) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+        <div className="max-w-xl w-full">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardHeader className="text-center">
+              <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <XCircle className="w-10 h-10 text-white" />
+              </div>
+              <CardTitle className="text-white text-2xl">Appointment Canceled</CardTitle>
+              <CardDescription className="text-gray-300">
+                We’ve canceled your appointment. You can book a new one anytime.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={handleDone} className="w-full bg-white text-black hover:bg-gray-200">
+                Done
               </Button>
             </CardContent>
           </Card>
@@ -240,6 +362,25 @@ export default function RescheduleAppointment() {
 
   return (
     <div className="min-h-screen bg-gray-900 pb-24">
+      {/* Local override for the phone number input ONLY (to match Book page) */}
+      <style jsx global>{`
+        .phone-input .PhoneInputInput {
+          background-color: #111827 !important; /* gray-900 */
+          color: #ffffff !important;
+          border: 1px solid #374151 !important; /* gray-700 */
+          border-radius: 0.5rem !important;
+          padding: 0.5rem 0.75rem !important;
+        }
+        .phone-input .PhoneInputInput::placeholder {
+          color: #9ca3af !important; /* gray-400 */
+        }
+        .phone-input .PhoneInputInput:focus {
+          outline: none !important;
+          border-color: #9ca3af !important; /* gray-400 */
+          box-shadow: 0 0 0 2px rgba(255,255,255,0.12) !important;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="bg-black border-b border-gray-800">
         <div className="container-max section-padding py-10 lg:py-14">
@@ -248,6 +389,9 @@ export default function RescheduleAppointment() {
             <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto">
               Verify your identity, then pick a new date and time
             </p>
+            {errorMsg && (
+              <p className="text-sm text-red-400 mt-3">{errorMsg}</p>
+            )}
           </div>
         </div>
       </div>
@@ -304,30 +448,40 @@ export default function RescheduleAppointment() {
                   <div className="space-y-8">
                     <div className="flex gap-3">
                       <Button
-                        variant={verifyMethod === 'phone' ? undefined : 'outline'}
                         onClick={() => {
                           setVerifyMethod('phone');
                           setEmail('');
                           setCodeSent(false);
                           setCodeInput('');
                           setVerified(false);
+                          setErrorMsg('');
                         }}
-                        className={verifyMethod === 'phone' ? 'bg-white hover:bg-gray-200' : 'border-gray-600'}
+                        className={
+                          verifyMethod === 'phone'
+                            ? 'bg-white text-black hover:bg-gray-200'
+                            : 'border-gray-600 text-white'
+                        }
+                        variant={verifyMethod === 'phone' ? undefined : 'outline'}
                       >
-                        <span className={verifyMethod === 'phone' ? 'text-black' : 'text-white'}>Use Phone</span>
+                        Use Phone
                       </Button>
                       <Button
-                        variant={verifyMethod === 'email' ? undefined : 'outline'}
                         onClick={() => {
                           setVerifyMethod('email');
                           setPhone('');
                           setCodeSent(false);
                           setCodeInput('');
                           setVerified(false);
+                          setErrorMsg('');
                         }}
-                        className={verifyMethod === 'email' ? 'bg-white hover:bg-gray-200' : 'border-gray-600'}
+                        className={
+                          verifyMethod === 'email'
+                            ? 'bg-white text-black hover:bg-gray-200'
+                            : 'border-gray-600 bg-white text-black hover:bg-gray-200'
+                        }
+                        variant={verifyMethod === 'email' ? undefined : 'outline'}
                       >
-                        <span className={verifyMethod === 'email' ? 'text-black' : 'text-white'}>Use Email</span>
+                        Use Email
                       </Button>
                     </div>
 
@@ -345,7 +499,7 @@ export default function RescheduleAppointment() {
                               '--PhoneInputCountryFlag-height': '1em',
                               '--PhoneInputCountrySelectArrow-color': '#9CA3AF',
                               '--PhoneInput-color--focus': '#FFFFFF',
-                            } as React.CSSProperties
+                            } as CSSProperties
                           }
                         />
                         {phone && !isValidPhoneNumber(phone) && (
@@ -355,10 +509,10 @@ export default function RescheduleAppointment() {
                         {!codeSent ? (
                           <Button
                             onClick={handleSendCode}
-                            disabled={!phone || !isValidPhoneNumber(phone)}
-                            className="bg-white hover:bg-gray-200"
+                            disabled={!phone || !isValidPhoneNumber(phone) || loadingSend}
+                            className="bg-white text-black hover:bg-gray-200"
                           >
-                            <span className="text-black font-medium">Send Code</span>
+                            {loadingSend ? 'Sending…' : 'Send Code'}
                           </Button>
                         ) : (
                           <div className="space-y-3">
@@ -367,29 +521,26 @@ export default function RescheduleAppointment() {
                               value={codeInput}
                               onChange={(e) => setCodeInput(e.target.value)}
                               maxLength={6}
-                              placeholder="123456"
+                              placeholder="Enter code"
                               className="bg-gray-700 border-gray-600 text-white"
                             />
                             <div className="flex gap-3">
                               <Button
                                 onClick={handleVerifyCode}
-                                disabled={codeInput.length !== 6}
-                                className="bg-white hover:bg-gray-200"
+                                disabled={codeInput.length !== 6 || loadingVerify}
+                                className="bg-white text-black hover:bg-gray-200"
                               >
-                                <span className="text-black font-medium">Verify</span>
+                                {loadingVerify ? 'Verifying…' : 'Verify'}
                               </Button>
                               <Button
                                 variant="outline"
-                                onClick={() => {
-                                  setCodeSent(false);
-                                  setCodeInput('');
-                                }}
-                                className="border-gray-600"
+                                onClick={handleSendCode}
+                                disabled={loadingSend}
+                                className="border-gray-600 text-black-950"
                               >
-                                <span className="text-white font-medium">Resend</span>
+                                {loadingSend ? 'Resending…' : 'Resend'}
                               </Button>
                             </div>
-                            <p className="text-xs text-gray-400">Demo code: 123456</p>
                           </div>
                         )}
                       </div>
@@ -412,10 +563,10 @@ export default function RescheduleAppointment() {
                         {!codeSent ? (
                           <Button
                             onClick={handleSendCode}
-                            disabled={!email || !validateEmail(email)}
-                            className="bg-white hover:bg-gray-200"
+                            disabled={!email || !validateEmail(email) || loadingSend}
+                            className="bg-white text-black hover:bg-gray-200"
                           >
-                            <span className="text-black font-medium">Send Code</span>
+                            {loadingSend ? 'Sending…' : 'Send Code'}
                           </Button>
                         ) : (
                           <div className="space-y-3">
@@ -424,29 +575,26 @@ export default function RescheduleAppointment() {
                               value={codeInput}
                               onChange={(e) => setCodeInput(e.target.value)}
                               maxLength={6}
-                              placeholder="123456"
+                              placeholder="Enter code"
                               className="bg-gray-700 border-gray-600 text-white"
                             />
                             <div className="flex gap-3">
                               <Button
                                 onClick={handleVerifyCode}
-                                disabled={codeInput.length !== 6}
-                                className="bg-white hover:bg-gray-200"
+                                disabled={codeInput.length !== 6 || loadingVerify}
+                                className="bg-white text-black hover:bg-gray-200"
                               >
-                                <span className="text-black font-medium">Verify</span>
+                                {loadingVerify ? 'Verifying…' : 'Verify'}
                               </Button>
                               <Button
                                 variant="outline"
-                                onClick={() => {
-                                  setCodeSent(false);
-                                  setCodeInput('');
-                                }}
-                                className="border-gray-600"
+                                onClick={handleSendCode}
+                                disabled={loadingSend}
+                                className="border-gray-600 text-white"
                               >
-                                <span className="text-white font-medium">Resend</span>
+                                {loadingSend ? 'Resending…' : 'Resend'}
                               </Button>
                             </div>
-                            <p className="text-xs text-gray-400">Demo code: 123456</p>
                           </div>
                         )}
                       </div>
@@ -462,15 +610,17 @@ export default function RescheduleAppointment() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-300">Service:</span>
-                          <span className="text-white font-medium">{selectedService?.name}</span>
+                          <span className="text-white font-medium">{appointment.service}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-300">Duration:</span>
-                          <span className="text-white font-medium">{selectedService?.duration} min</span>
+                          <span className="text-white font-medium">{appointment.duration} min</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-300">Date:</span>
-                          <span className="text-white font-medium">{moment(appointment.date).format('MMMM DD, YYYY')}</span>
+                          <span className="text-white font-medium">
+                            {moment(appointment.date).format('MMMM DD, YYYY')}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-300">Time:</span>
@@ -490,10 +640,10 @@ export default function RescheduleAppointment() {
                               key={d.date}
                               onClick={() => setNewDate(d.date)}
                               className={`p-3 lg:p-4 rounded-lg border-2 transition-all duration-300 text-center ${
-                                active ? 'border-white bg-white' : 'border-gray-600 bg-gray-700 hover:border-gray-400'
+                                active ? 'border-white bg-white text-black' : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
                               }`}
                             >
-                              <div className={active ? 'text-black' : 'text-white'}>
+                              <div>
                                 <div className="text-xs lg:text-sm font-medium">{d.dayName}</div>
                                 <div className="text-sm lg:text-lg font-bold">{d.display}</div>
                                 {d.isToday && <div className="text-xs text-gray-400 mt-1">Today</div>}
@@ -517,10 +667,10 @@ export default function RescheduleAppointment() {
                                 key={t}
                                 onClick={() => setNewTime(t)}
                                 className={`p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base ${
-                                  active ? 'border-white bg-white' : 'border-gray-600 bg-gray-700 hover:border-gray-400'
+                                  active ? 'border-white bg-white text-black' : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
                                 }`}
                               >
-                                <span className={active ? 'text-black' : 'text-white'}>{t}</span>
+                                {t}
                               </button>
                             );
                           })}
@@ -531,14 +681,14 @@ export default function RescheduleAppointment() {
                 )}
 
                 {/* Step 3: Review */}
-                {step === 3 && appointment && selectedService && (
+                {step === 3 && appointment && (
                   <div className="space-y-6">
                     <div className="bg-gray-700 p-6 rounded-lg border border-gray-600">
                       <h3 className="text-lg lg:text-xl font-bold text-white mb-6">Reschedule Summary</h3>
                       <div className="space-y-4">
                         <div className="flex justify-between items-center py-2 border-b border-gray-600">
                           <span className="text-gray-300">Service:</span>
-                          <span className="font-semibold text-white">{selectedService.name}</span>
+                          <span className="font-semibold text-white">{appointment.service}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-600">
                           <span className="text-gray-300">New Date:</span>
@@ -550,11 +700,11 @@ export default function RescheduleAppointment() {
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-600">
                           <span className="text-gray-300">Duration:</span>
-                          <span className="font-semibold text-white">{selectedService.duration} minutes</span>
+                          <span className="font-semibold text-white">{appointment.duration} minutes</span>
                         </div>
                         <div className="flex justify-between items-center py-3 border-t border-gray-500">
                           <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
-                          <span className="text-xl lg:text-2xl font-bold text-white">${selectedService.price}</span>
+                          <span className="text-xl lg:text-2xl font-bold text-white">${appointment.price}</span>
                         </div>
                       </div>
                     </div>
@@ -586,9 +736,9 @@ export default function RescheduleAppointment() {
                     <>
                       <div className="p-4 bg-gray-700 rounded-lg">
                         <h4 className="font-semibold text-white mb-2">Service</h4>
-                        <p className="text-gray-300 text-sm mb-2">{selectedService?.duration} minutes</p>
-                        <p className="text-xl font-bold text-white">{selectedService?.name}</p>
-                        <p className="text-gray-300 mt-1">${selectedService?.price}</p>
+                        <p className="text-gray-300 text-sm mb-2">{appointment.duration} minutes</p>
+                        <p className="text-xl font-bold text-white">{appointment.service}</p>
+                        <p className="text-gray-300 mt-1">${appointment.price}</p>
                       </div>
 
                       <div className="p-4 bg-gray-700 rounded-lg">
@@ -624,36 +774,40 @@ export default function RescheduleAppointment() {
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 p-4 z-40">
         <div className="container-max section-padding">
           <div className="flex justify-between items-center">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (step === 1) return;
-                if (step === 2) {
-                  // Back to verification
-                  setStep(1);
-                } else if (step === 3) {
-                  setStep(2);
-                }
-              }}
-              disabled={step === 1}
-              className={`${step === 1 ? 'invisible' : ''} border-gray-600`}
-            >
-              <span className="inline-flex items-center text-white">
+            {/* Left button: Back by default; at Step 2 it becomes "Cancel appointment" */}
+            {step === 2 ? (
+              <Button
+                onClick={() => setShowCancelModal(true)}
+                className="bg-red-600 text-white hover:bg-red-500"
+                disabled={loadingCancel}
+              >
+                <XCircle className="h-4 w-4 mr-2" />
+                Cancel appointment
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  // This branch only renders when step !== 2.
+                  if (step === 3) setStep(2);
+                  else setStep(1); // for step 1 it's disabled anyway
+                }}
+                disabled={step === 1}
+                className={`${step === 1 ? 'invisible' : ''} bg-white text-black hover:bg-gray-200`}
+              >
                 <ChevronLeft className="h-4 w-4 mr-2" />
-                <span className="font-medium">Back</span>
-              </span>
-            </Button>
+                Back
+              </Button>
+            )}
 
+            {/* Right button */}
             {step === 1 && (
               <Button
                 onClick={() => setStep(2)}
                 disabled={!canContinueFromStep1}
-                className="bg-white hover:bg-gray-200"
+                className="bg-white text-black hover:bg-gray-200"
               >
-                <span className="inline-flex items-center text-black">
-                  <span className="font-medium">Continue</span>
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </span>
+                Continue
+                <ChevronRight className="h-4 w-4 ml-2" />
               </Button>
             )}
 
@@ -661,29 +815,86 @@ export default function RescheduleAppointment() {
               <Button
                 onClick={() => setStep(3)}
                 disabled={!canContinueFromStep2}
-                className="bg-white hover:bg-gray-200"
+                className="bg-white text-black hover:bg-gray-200"
               >
-                <span className="inline-flex items-center text-black">
-                  <span className="font-medium">Continue</span>
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </span>
+                Next
+                <ChevronRight className="h-4 w-4 ml-2" />
               </Button>
             )}
 
             {step === 3 && (
-              <Button onClick={handleConfirmReschedule} className="bg-white hover:bg-gray-200">
-                <span className="text-black font-medium">Confirm Reschedule</span>
+              <Button
+                onClick={handleConfirmReschedule}
+                className="bg-white text-black hover:bg-gray-200"
+                disabled={loadingUpdate}
+              >
+                {loadingUpdate ? 'Updating…' : 'Confirm Reschedule'}
               </Button>
             )}
 
             {step === 4 && (
-              <Button onClick={handleDone} className="bg-white hover:bg-gray-200">
-                <span className="text-black font-medium">Done</span>
+              <Button onClick={handleDone} className="bg-white text-black hover:bg-gray-200">
+                Done
               </Button>
             )}
           </div>
         </div>
       </div>
+
+      {/* Cancel confirmation modal */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent className="bg-gray-800 border border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-red-500" />
+              Cancel appointment?
+            </DialogTitle>
+            <DialogDescription className="text-gray-300">
+              This will cancel your current appointment. You can rebook at any time.
+            </DialogDescription>
+          </DialogHeader>
+
+          {appointment && (
+            <div className="bg-gray-700 p-4 rounded-lg border border-gray-600">
+              <div className="flex justify-between">
+                <span className="text-gray-300">Name:</span>
+                <span className="text-white font-medium">
+                  {appointment.firstName} {appointment.lastName}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Service:</span>
+                <span className="text-white font-medium">{appointment.service}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Date:</span>
+                <span className="text-white font-medium">
+                  {moment(appointment.date).format('MMMM DD, YYYY')}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-300">Time:</span>
+                <span className="text-white font-medium">{appointment.time}</span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-3 sm:justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" className="border-gray-600 text-white">
+                Keep appointment
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={handleConfirmCancel}
+              className="bg-red-600 text-white hover:bg-red-500"
+              disabled={loadingCancel}
+            >
+              {loadingCancel ? 'Cancelling…' : 'Yes, cancel it'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
