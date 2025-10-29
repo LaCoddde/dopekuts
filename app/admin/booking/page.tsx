@@ -18,7 +18,7 @@ import {
   CircleAlert as AlertCircle,
   PlusCircle,
 } from 'lucide-react';
-import { getAllBookings, confirmPayment, cancelBooking, IBooking } from '@/lib/api/booking';
+import { getAllBookings, confirmPayment, cancelBookingAdmin, IBooking } from '@/lib/api/booking';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import BookAppointmentPage from '@/app/book/page';
 
@@ -196,7 +196,7 @@ export default function BookingManagement() {
   const handleCancelBooking = async (bookingId: string) => {
     if (!window.confirm('Are you sure you want to cancel this booking?')) return;
     try {
-      await cancelBooking(bookingId);
+      await cancelBookingAdmin(bookingId);
       setBookings((prev) => prev.map((b) => (b._id === bookingId ? { ...b, status: 'cancelled' } : b)));
     } catch (err) {
       console.error('Failed to cancel booking:', err);
@@ -470,6 +470,8 @@ export default function BookingManagement() {
               ) : (
                 filteredAndSortedBookings.map((booking) => {
                   const dt = toBookingDateTime(booking);
+                  const isPastBooking = Date.now() > dt.getTime();
+
                   return (
                     <div
                       key={booking._id}
@@ -483,6 +485,9 @@ export default function BookingManagement() {
                               {booking.firstName} {booking.lastName}
                             </h3>
                             {getStatusBadge(booking.status)}
+                            {isPastBooking && (
+                              <Badge className="bg-gray-500 text-white border-gray-400">Past booking</Badge>
+                            )}
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3 text-xs sm:text-sm">
                             <div className="flex items-center text-gray-300">
@@ -518,44 +523,52 @@ export default function BookingManagement() {
 
                         {/* Action Buttons */}
                         <div className="flex flex-col gap-2 lg:w-36 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-gray-600 lg:pl-4">
-                          {booking.status === 'pending' && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleConfirmBooking(booking._id)}
-                              className="bg-green-600 hover:bg-green-700 text-white w-full"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Confirm
-                            </Button>
-                          )}
-
-                          {booking.status !== 'cancelled' && (
+                          {!isPastBooking ? (
                             <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReschedule(booking._id)}
-                                className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
-                              >
-                                <Edit className="h-4 w-4 mr-1" />
-                                Reschedule
-                              </Button>
+                              {booking.status === 'pending' && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleConfirmBooking(booking._id)}
+                                  className="bg-green-600 hover:bg-green-700 text-white w-full"
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
+                                  Confirm
+                                </Button>
+                              )}
 
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleCancelBooking(booking._id)}
-                                className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
-                              >
-                                <X className="h-4 w-4 mr-1" />
-                                Cancel
-                              </Button>
+                              {booking.status !== 'cancelled' && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleReschedule(booking._id)}
+                                    className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
+                                  >
+                                    <Edit className="h-4 w-4 mr-1" />
+                                    Reschedule
+                                  </Button>
+
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleCancelBooking(booking._id)}
+                                    className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
+                                  >
+                                    <X className="h-4 w-4 mr-1" />
+                                    Cancel
+                                  </Button>
+                                </>
+                              )}
+
+                              {booking.status === 'cancelled' && (
+                                <Badge variant="secondary" className="text-center py-2">
+                                  No Actions
+                                </Badge>
+                              )}
                             </>
-                          )}
-
-                          {booking.status === 'cancelled' && (
+                          ) : (
                             <Badge variant="secondary" className="text-center py-2">
-                              No Actions
+                              No Actions (past)
                             </Badge>
                           )}
                         </div>

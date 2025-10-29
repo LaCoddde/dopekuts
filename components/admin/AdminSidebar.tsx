@@ -11,7 +11,9 @@ import {
   Scissors,
   Settings,
   X,
+  Images,
   type LucideProps,
+  MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,10 +38,18 @@ const navItems: NavItem[] = [
   { title: 'Contact', href: '/admin/contact', icon: MessageSquare },
   { title: 'Email', href: '/admin/email', icon: Mail },
   { title: 'Settings', href: '/admin/settings', icon: Settings },
+  { title: 'Tickets', href: '/admin/tickets', icon: MessageCircle },
+
+  // New
+  { title: 'Gallery', href: '/admin/gallery', icon: Images },
 ];
 
 export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
+
+  const sortedNavItems = [...navItems].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+  );
 
   return (
     <>
@@ -71,7 +81,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
           </div>
 
           <nav className="flex-1 p-4 space-y-2">
-            {navItems.map((item) => {
+            {sortedNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
 

@@ -15,13 +15,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Scissors, Plus, Trash2, Edit, Clock, DollarSign } from 'lucide-react';
 import {
   getAllServices,
@@ -43,7 +36,7 @@ export default function ServicesManagement() {
     name: '',
     description: '',
     price: '',
-    duration: '30',
+    duration: '30', // stored as string like price, parsed on submit
   });
 
   const fetchServices = async () => {
@@ -70,15 +63,14 @@ export default function ServicesManagement() {
           name: newService.name,
           description: newService.description,
           price: parseFloat(newService.price),
-          duration: parseInt(newService.duration),
+          duration: parseInt(newService.duration, 10),
         };
         await createService(serviceData);
-        await fetchServices(); // Refetch to get the latest list
+        await fetchServices();
         setNewService({ name: '', description: '', price: '', duration: '30' });
         setIsAddDialogOpen(false);
       } catch (err) {
         console.error('Failed to add service:', err);
-        // Optionally, set a user-facing error message here
       }
     }
   };
@@ -90,16 +82,15 @@ export default function ServicesManagement() {
           name: newService.name,
           description: newService.description,
           price: parseFloat(newService.price),
-          duration: parseInt(newService.duration),
+          duration: parseInt(newService.duration, 10),
         };
         await updateService(editingService._id, updatedData);
-        await fetchServices(); // Refetch to get the latest list
+        await fetchServices();
         setIsEditDialogOpen(false);
         setEditingService(null);
         setNewService({ name: '', description: '', price: '', duration: '30' });
       } catch (err) {
         console.error('Failed to edit service:', err);
-        // Optionally, set a user-facing error message here
       }
     }
   };
@@ -118,11 +109,9 @@ export default function ServicesManagement() {
   const handleDeleteService = async (id: string) => {
     try {
       await deleteService(id);
-      // Optimistically update UI by filtering out the deleted service
       setServices(services.filter((service) => service._id !== id));
     } catch (err) {
       console.error('Failed to delete service:', err);
-      // Optionally, set a user-facing error message here
     }
   };
 
@@ -199,52 +188,31 @@ export default function ServicesManagement() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="duration" className="text-gray-300">
-                    Duration
+                    Duration (mins)
                   </Label>
-                  <Select
+                  <Input
+                    id="duration"
+                    type="number"
+                    placeholder="30"
                     value={newService.duration}
-                    onValueChange={(value) => setNewService({ ...newService, duration: value })}
-                  >
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
-                      <SelectItem value="15" className="text-white">
-                        15 mins
-                      </SelectItem>
-                      <SelectItem value="20" className="text-white">
-                        20 mins
-                      </SelectItem>
-                      <SelectItem value="30" className="text-white">
-                        30 mins
-                      </SelectItem>
-                      <SelectItem value="45" className="text-white">
-                        45 mins
-                      </SelectItem>
-                      <SelectItem value="60" className="text-white">
-                        60 mins
-                      </SelectItem>
-                      <SelectItem value="90" className="text-white">
-                        90 mins
-                      </SelectItem>
-                      <SelectItem value="120" className="text-white">
-                        120 mins
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setNewService({ ...newService, duration: e.target.value })}
+                    className="bg-gray-700 border-gray-600 text-white"
+                    min={1}
+                    step={1}
+                  />
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
                 <Button
                   variant="outline"
                   onClick={() => setIsAddDialogOpen(false)}
-                  className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+                  className="flex-1 border-gray-600 bg-white text-black hover:bg-gray-700 hover:text-white"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleAddService}
-                  className="flex-1 bg-white text-black hover:bg-gray-200"
+                  className="flex-1 bg-white text-black hover:bg-gray-900 hover:text-white"
                 >
                   Add Service
                 </Button>
@@ -304,52 +272,31 @@ export default function ServicesManagement() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editDuration" className="text-gray-300">
-                  Duration
+                  Duration (mins)
                 </Label>
-                <Select
+                <Input
+                  id="editDuration"
+                  type="number"
+                  placeholder="30"
                   value={newService.duration}
-                  onValueChange={(value) => setNewService({ ...newService, duration: value })}
-                >
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600">
-                    <SelectItem value="15" className="text-white">
-                      15 mins
-                    </SelectItem>
-                    <SelectItem value="20" className="text-white">
-                      20 mins
-                    </SelectItem>
-                    <SelectItem value="30" className="text-white">
-                      30 mins
-                    </SelectItem>
-                    <SelectItem value="45" className="text-white">
-                      45 mins
-                    </SelectItem>
-                    <SelectItem value="60" className="text-white">
-                      60 mins
-                    </SelectItem>
-                    <SelectItem value="90" className="text-white">
-                      90 mins
-                    </SelectItem>
-                    <SelectItem value="120" className="text-white">
-                      120 mins
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setNewService({ ...newService, duration: e.target.value })}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  min={1}
+                  step={1}
+                />
               </div>
             </div>
             <div className="flex gap-3 pt-4">
               <Button
                 variant="outline"
                 onClick={() => setIsEditDialogOpen(false)}
-                className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="flex-1 border-gray-600 bg-white text-black-950 hover:bg-gray-700 hover:text-white"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleEditService}
-                className="flex-1 bg-white text-black hover:bg-gray-200"
+                className="flex-1 bg-white text-black-950 hover:bg-gray-900 hover:text-white"
               >
                 Save Changes
               </Button>
@@ -389,7 +336,7 @@ export default function ServicesManagement() {
                     variant="outline"
                     size="sm"
                     onClick={() => openEditDialog(service)}
-                    className="flex-1 border-gray-600 text-white hover:bg-gray-700"
+                    className="flex-1 border-gray-600 text-black hover:bg-gray-700 hover:text-white"
                   >
                     <Edit className="h-4 w-4 mr-1" />
                     Edit

@@ -72,10 +72,10 @@ export default function NotFound() {
               </a>
               <div className="hidden sm:block w-1 h-1 bg-gray-600 rounded-full"></div>
               <a 
-                href="mailto:info@dopecuts.com" 
+                href="mailto:roy@dopecuts.ca" 
                 className="hover:text-white transition-colors duration-200"
               >
-                info@dopecuts.com
+                roy@dopecuts.ca
               </a>
             </div>
           </div>

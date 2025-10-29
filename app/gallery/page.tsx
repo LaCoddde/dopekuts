@@ -22,6 +22,7 @@ const categories = ['All', 'Classic Cuts', 'Beard Styling', 'Modern Styles'];
 
 export default function Gallery() {
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const filteredItems =
     selectedCategory === 'All'
@@ -40,47 +41,82 @@ export default function Gallery() {
 
           {/* Category Filter */}
           <div className="flex justify-center gap-4 flex-wrap">
-            {categories.map((category) => (
-              <Badge
-                key={category}
-                variant={selectedCategory === category ? 'default' : 'outline'}
-                className="cursor-pointer px-4 py-2"
-                onClick={() => setSelectedCategory(category)}
-              >
-                {category}
-              </Badge>
-            ))}
+            {categories.map((category) => {
+              const isActive = selectedCategory === category;
+              return (
+                <Badge
+                  key={category}
+                  variant={isActive ? 'default' : 'outline'}
+                  className={`cursor-pointer px-4 py-2 ${
+                    isActive ? '' : 'text-white border-white/40 hover:bg-white/10'
+                  }`}
+                  onClick={() => {
+                    setSelectedCategory(category);
+                    setSelectedId(null);
+                  }}
+                >
+                  {category}
+                </Badge>
+              );
+            })}
           </div>
         </div>
 
         {/* Gallery Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredItems.map((item, idx) => (
-            <Card
-              key={item.id}
-              className="overflow-hidden hover-lift cursor-pointer bg-gray-800 border-gray-700"
-            >
-              <CardContent className="p-0">
-                <div className="aspect-square relative">
-                  <Image
-                    src={item.image}
-                    alt={`${item.category} example ${item.id}`}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    className="object-cover"
-                    priority={idx < 2}
-                  />
-                  <div className="absolute inset-0 bg-black/20 opacity-0 hover:opacity-100 transition-opacity duration-300 flex items-end">
-                    <div className="p-4 text-white w-full">
-                      <Badge className="bg-white/20 text-white border-white/20">
-                        {item.category}
-                      </Badge>
+          {filteredItems.map((item, idx) => {
+            const isSelected = selectedId === item.id;
+            return (
+              <Card
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
+                onClick={() => setSelectedId(isSelected ? null : item.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedId(isSelected ? null : item.id);
+                  }
+                }}
+                className={`overflow-hidden cursor-pointer bg-gray-800 border ${
+                  isSelected ? 'border-2 border-white' : 'border-gray-700'
+                } transition-colors duration-300 hover-lift`}
+              >
+                <CardContent className="p-0">
+                  <div className="aspect-square relative">
+                    <Image
+                      src={item.image}
+                      alt={`${item.category} example ${item.id}`}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover"
+                      priority={idx < 2}
+                    />
+                    <div
+                      className={`absolute inset-0 flex items-end transition-all duration-300 ${
+                        isSelected
+                          ? 'bg-white/40 opacity-100'
+                          : 'bg-black/20 opacity-0 hover:opacity-100'
+                      }`}
+                    >
+                      <div className="p-4 w-full">
+                        <Badge
+                          className={
+                            isSelected
+                              ? 'bg-white text-black border-black/10'
+                              : 'bg-white/20 text-white border-white/20'
+                          }
+                        >
+                          {item.category}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Call to Action */}

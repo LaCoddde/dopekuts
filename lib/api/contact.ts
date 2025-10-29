@@ -60,3 +60,20 @@ export async function deleteContact(id: string): Promise<{ message: string }> {
     const response = await apiClient.delete<{ message: string }>(`/contacts/${id}`);
     return response.data;
 }
+
+export interface IContactLookup {
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}
+
+/**
+ * Public lookup by phone for autofill during booking.
+ * @access Public
+ */
+export async function getContactByPhone(phone: string): Promise<IContactLookup> {
+  const res = await apiClient.get<IContactLookup>(`/contacts/lookup/phone/${encodeURIComponent(phone)}`);
+  return res.data;
+}

@@ -1,12 +1,10 @@
-// app/book/page.tsx
+// dopecut/dopekuts-main/app/book/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-// --- MODIFICATION: Import useSearchParams ---
-import { useSearchParams } from 'next/navigation'; 
-import PhoneInput from 'react-phone-number-input'; // E164Number is not exported from here
+import { useSearchParams } from 'next/navigation';
+import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
-// FIX 1: Import E164Number from its correct source package
 import { isValidPhoneNumber, E164Number } from 'libphonenumber-js';
 import { Scissors, Calendar, Clock, User, CreditCard, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,27 +20,24 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import moment from 'moment';
-// FIX 2 will be to install this package. The import itself is correct.
 import toast from 'react-hot-toast';
 
 // --- API Imports ---
 import { getAllServices, IService } from '@/lib/api/service';
 import { getCalendarSettings, getAvailability, ICalendarSettings } from '@/lib/api/calendar';
-// FIX 3: Import the 'CreateBookingData' type to ensure our payload is correct
 import { createBooking, IBooking, CreateBookingData } from '@/lib/api/booking';
-
+import { getContactByPhone, IContactLookup } from '@/lib/api/contact';
 
 // --- Helper Types ---
 interface AvailableDate {
   date: string;     // "YYYY-MM-DD"
-  display: string;    // "MMM DD"
-  dayName: string;    // "ddd"
+  display: string;  // "MMM DD"
+  dayName: string;  // "ddd"
   isToday: boolean;
   isTomorrow: boolean;
 }
 
 export default function BookAppointment() {
-  // --- MODIFICATION: Instantiate useSearchParams ---
   const searchParams = useSearchParams();
 
   const [step, setStep] = useState(1);
@@ -54,10 +49,10 @@ export default function BookAppointment() {
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(true);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
-  
+
   // --- Form & UI State ---
   const [formData, setFormData] = useState({
-    serviceId: '', // Initial state remains empty
+    serviceId: '',
     date: '',
     time: '',
     phone: '',
@@ -65,7 +60,6 @@ export default function BookAppointment() {
     lastName: '',
     email: '',
     notes: '',
-    // FIX 3: Changed 'later' to 'in-person' to match the API client's type definition.
     paymentMethod: 'in-person' as 'in-person' | 'now',
   });
   const [showRestOfForm, setShowRestOfForm] = useState(false);
@@ -75,17 +69,14 @@ export default function BookAppointment() {
 
   // --- Initial Data Fetching ---
   useEffect(() => {
-    // --- MODIFICATION: Read serviceId from URL and set state ---
     const serviceIdFromUrl = searchParams.get('serviceId');
     if (serviceIdFromUrl) {
       setFormData(prev => ({ ...prev, serviceId: serviceIdFromUrl }));
     }
-    // --- END MODIFICATION ---
 
     const fetchInitialData = async () => {
       try {
         setIsLoadingServices(true);
-        // Fetch services and calendar settings in parallel
         const [servicesResponse, settingsResponse] = await Promise.all([
           getAllServices(),
           getCalendarSettings(),
@@ -100,7 +91,6 @@ export default function BookAppointment() {
       }
     };
     fetchInitialData();
-    // --- MODIFICATION: Add searchParams to dependency array ---
   }, [searchParams]);
 
   // --- Fetch Availability on Date Change ---
@@ -123,6 +113,12 @@ export default function BookAppointment() {
     }
   }, [formData.date]);
 
+  // --- Scroll to top whenever step changes ---
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
 
   // --- Helper Functions ---
   const generateAvailableDates = (settings: ICalendarSettings[]) => {
@@ -131,8 +127,8 @@ export default function BookAppointment() {
       .map(day => day.dayOfWeek);
 
     const dayNameToIndex: { [key: string]: number } = {
-      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
-      'Thursday': 4, 'Friday': 5, 'Saturday': 6
+      Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+      Thursday: 4, Friday: 5, Saturday: 6,
     };
 
     const enabledDayIndexes = enabledDays.map(dayName => dayNameToIndex[dayName]);
@@ -141,7 +137,6 @@ export default function BookAppointment() {
     const today = moment();
     let count = 0;
 
-    // Generate dates for the next 30 days, but only keep the first 14 available ones
     for (let i = 0; count < 14 && i < 30; i++) {
       const date = today.clone().add(i, 'days');
       if (enabledDayIndexes.includes(date.day())) {
@@ -158,7 +153,6 @@ export default function BookAppointment() {
     setAvailableDates(dates);
   };
 
-
   // --- Event Handlers ---
   const handleNext = () => {
     if (step < 4) setStep(step + 1);
@@ -167,65 +161,79 @@ export default function BookAppointment() {
   const handleBack = () => {
     if (step > 1) setStep(step - 1);
   };
-  
-  const handlePhoneSubmit = () => {
+
+  const handlePhoneSubmit = async () => {
     if (formData.phone && isValidPhoneNumber(formData.phone)) {
       setShowRestOfForm(true);
+
+      // Autofill via public contact lookup (new endpoint)
+      try {
+        const contact: IContactLookup = await getContactByPhone(formData.phone);
+        // Split full name into first/last best-effort
+        const [first, ...rest] = (contact.name || '').trim().split(/\s+/);
+        const last = rest.join(' ');
+        setFormData(prev => ({
+          ...prev,
+          firstName: first || prev.firstName,
+          lastName: last || prev.lastName,
+          email: contact.email || prev.email,
+        }));
+      } catch {
+        // No contact found or lookup failed -> keep fields empty
+      }
     }
   };
-  
+
   const handleSubmit = async () => {
     setIsLoading(true);
     toast.loading('Submitting your booking...');
 
     try {
-        // FIX 3: Construct a payload that explicitly matches the 'CreateBookingData' type.
-        const payload: CreateBookingData = {
-            serviceId: formData.serviceId,
-            date: formData.date,
-            time: formData.time,
-            phone: formData.phone as E164Number, // Assert type for phone
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            email: formData.email,
-            notes: formData.notes,
-            paymentMethod: formData.paymentMethod,
-        };
-        const result = await createBooking(payload);
-        setConfirmedBooking(result.booking);
-        toast.dismiss();
-        toast.success(result.message);
+      const payload: CreateBookingData = {
+        serviceId: formData.serviceId,
+        date: formData.date,
+        time: formData.time,
+        phone: formData.phone as E164Number,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        notes: formData.notes,
+        paymentMethod: formData.paymentMethod,
+      };
+      const result = await createBooking(payload);
+      setConfirmedBooking(result.booking);
+      toast.dismiss();
+      toast.success(result.message);
     } catch (error: any) {
-        toast.dismiss();
-        const errorMessage = error.response?.data?.message || 'Failed to create booking.';
-        toast.error(errorMessage);
-        console.error('Booking submission error:', error);
+      toast.dismiss();
+      const errorMessage = error.response?.data?.message || 'Failed to create booking.';
+      toast.error(errorMessage);
+      console.error('Booking submission error:', error);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleBookingComplete = () => {
-    // Reset state to allow for a new booking
     setStep(1);
     setConfirmedBooking(null);
     setFormData({
-        serviceId: '',
-        date: '',
-        time: '',
-        phone: '',
-        firstName: '',
-        lastName: '',
-        email: '',
-        notes: '',
-        paymentMethod: 'in-person', // FIX 3: Reset to the correct default value
+      serviceId: '',
+      date: '',
+      time: '',
+      phone: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      notes: '',
+      paymentMethod: 'in-person',
     });
     setShowRestOfForm(false);
   };
 
   const selectedService = services.find((s) => s._id === formData.serviceId);
 
-  // --- Confirmation Screen (No changes needed here) ---
+  // --- Confirmation Screen ---
   if (confirmedBooking) {
     const isPending = confirmedBooking.status === 'pending';
     return (
@@ -235,35 +243,34 @@ export default function BookAppointment() {
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-8 lg:p-12">
               <div className="mb-8">
                 <div className={`w-20 h-20 ${isPending ? 'bg-yellow-500' : 'bg-green-500'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                    {isPending ? (
-                        <Clock className="w-10 h-10 text-white" />
-                    ) : (
-                        <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                    )}
+                  {isPending ? (
+                    <Clock className="w-10 h-10 text-white" />
+                  ) : (
+                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </div>
                 <h1 className="text-3xl lg:text-4xl font-bold text-white mb-4">
-                    {isPending ? 'Booking Pending' : 'Booking Confirmed!'}
+                  {isPending ? 'Booking Pending' : 'Booking Confirmed!'}
                 </h1>
                 <p className="text-lg text-gray-300 mb-8">
-                    {isPending 
-                        ? "Your appointment is reserved! Please complete the payment to confirm."
-                        : "Your appointment has been successfully booked. We'll send a confirmation email shortly."
-                    }
+                  {isPending
+                    ? 'Your appointment is reserved! Please complete the payment to confirm.'
+                    : 'On your appointment date please allow 10mins wait time'}
                 </p>
               </div>
 
               {isPending && (
                 <div className="bg-gray-700 p-6 rounded-lg border border-gray-600 mb-8 text-left">
-                    <h3 className="text-lg font-bold text-white mb-4">Complete Your Payment</h3>
-                    <p className="text-gray-300 mb-4">To confirm your booking, please send an Interac e-Transfer with the following details:</p>
-                    <div className="space-y-2 text-sm">
-                        <p><strong className="text-gray-200">Recipient Email:</strong> leeroyfoghoosiobe@gmail.com</p>
-                        <p><strong className="text-gray-200">Amount:</strong> ${selectedService?.price}</p>
-                        <p><strong className="text-gray-200">Message/Note:</strong> Booking for {confirmedBooking.firstName}</p>
-                    </div>
-                     <p className="text-xs text-gray-400 mt-4">Your booking will be automatically confirmed once payment is received.</p>
+                  <h3 className="text-lg font-bold text-white mb-4">Complete Your Payment</h3>
+                  <p className="text-gray-300 mb-4">To confirm your booking, please send an Interac e-Transfer with the following details:</p>
+                  <div className="space-y-2 text-sm">
+                    <p><strong className="text-gray-200">Recipient Email: leeroyfoghoosiobe@gmail.com </strong ></p>
+                    <p><strong className="text-gray-200">Amount: ${selectedService?.price} </strong></p>
+                    <p><strong className="text-gray-200">Message/Note:Booking for {confirmedBooking.firstName} </strong> </p>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-4">Your booking will be automatically confirmed once payment is received.</p>
                 </div>
               )}
 
@@ -316,6 +323,25 @@ export default function BookAppointment() {
   // --- Main Booking Form ---
   return (
     <div className="min-h-screen bg-gray-900 pb-24">
+      {/* Local override for the phone number input ONLY */}
+      <style jsx global>{`
+        .phone-input .PhoneInputInput {
+          background-color: #111827 !important; /* gray-900 */
+          color: #ffffff !important;
+          border: 1px solid #374151 !important; /* gray-700 */
+          border-radius: 0.5rem !important;
+          padding: 0.5rem 0.75rem !important;
+        }
+        .phone-input .PhoneInputInput::placeholder {
+          color: #9ca3af !important; /* gray-400 */
+        }
+        .phone-input .PhoneInputInput:focus {
+          outline: none !important;
+          border-color: #9ca3af !important; /* gray-400 */
+          box-shadow: 0 0 0 2px rgba(255,255,255,0.12) !important;
+        }
+      `}</style>
+
       {/* Header Section */}
       <div className="bg-black border-b border-gray-800">
         <div className="container-max section-padding py-12 lg:py-16">
@@ -382,261 +408,323 @@ export default function BookAppointment() {
                   {/* Step 1: Service Selection */}
                   {step === 1 && (
                     isLoadingServices ? (
-                        <div className="flex justify-center items-center h-48">
-                            <Loader2 className="h-8 w-8 text-white animate-spin" />
-                        </div>
+                      <div className="flex justify-center items-center h-48">
+                        <Loader2 className="h-8 w-8 text-white animate-spin" />
+                      </div>
                     ) : (
-                        <div className="space-y-4">
-                            <RadioGroup
-                                value={formData.serviceId}
-                                onValueChange={(value) => setFormData({ ...formData, serviceId: value })}
+                      <div className="space-y-4">
+                        <RadioGroup
+                          value={formData.serviceId}
+                          onValueChange={(value) => setFormData({ ...formData, serviceId: value })}
+                        >
+                          {services.map((service) => (
+                            <div
+                              key={service._id}
+                              className={`relative p-4 lg:p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 hover:bg-gray-700 ${
+                                formData.serviceId === service._id
+                                  ? 'border-white bg-gray-700'
+                                  : 'border-gray-600 bg-gray-800'
+                              }`}
+                              onClick={() => setFormData({ ...formData, serviceId: service._id })}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setFormData({ ...formData, serviceId: service._id });
+                                }
+                              }}
                             >
-                                {services.map((service) => (
-                                <div
-                                    key={service._id}
-                                    className={`relative p-4 lg:p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 hover:bg-gray-700 ${
-                                    formData.serviceId === service._id
-                                        ? 'border-white bg-gray-700'
-                                        : 'border-gray-600 bg-gray-800'
-                                    }`}
-                                >
+                              <Label htmlFor={service._id} className="cursor-pointer block">
+                                <div className="flex justify-between items-start mb-3">
+                                  {/* Left info */}
+                                  <div className="pr-4">
+                                    <h3 className="text-lg lg:text-xl font-bold text-white mb-2">{service.name}</h3>
+                                    <p className="text-sm lg:text-base text-gray-300 mb-2">Duration: {service.duration} minutes</p>
+                                  </div>
+
+                                  {/* Right column: radio on top, price below */}
+                                  <div className="flex flex-col items-end gap-2">
                                     <RadioGroupItem
-                                    value={service._id}
-                                    id={service._id}
-                                    className="absolute top-4 right-4 lg:top-6 lg:right-6"
+                                      value={service._id}
+                                      id={service._id}
                                     />
-                                    <Label htmlFor={service._id} className="cursor-pointer block">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div>
-                                        <h3 className="text-lg lg:text-xl font-bold text-white mb-2">{service.name}</h3>
-                                        <p className="text-sm lg:text-base text-gray-300 mb-2">Duration: {service.duration} minutes</p>
-                                        </div>
-                                        <div className="text-right">
-                                        <div className="text-xl lg:text-2xl font-bold text-white">${service.price}</div>
-                                        </div>
+                                    <div className="text-right">
+                                      <div className="text-xl lg:text-2xl font-bold text-white">${service.price}</div>
                                     </div>
-                                    {/* MODIFICATION START */}
-                                    {service.description && (
-                                        <p className="text-sm text-gray-400 pr-8">{service.description}</p>
-                                    )}
-                                    {/* MODIFICATION END */}
-                                    </Label>
+                                  </div>
                                 </div>
-                                ))}
-                            </RadioGroup>
-                        </div>
+
+                                {service.description && (
+                                  <p className="text-sm text-gray-400 pr-0">{service.description}</p>
+                                )}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
                     )
                   )}
 
                   {/* Step 2: Date & Time Selection */}
                   {step === 2 && (
                     <div className="space-y-6 lg:space-y-8">
-                        <div>
-                            <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Date</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                            {availableDates.map((dateObj) => (
-                                <button
-                                key={dateObj.date}
-                                onClick={() => setFormData({ ...formData, date: dateObj.date })}
-                                className={`p-3 lg:p-4 rounded-lg border-2 transition-all duration-300 text-center ${
-                                    formData.date === dateObj.date
-                                    ? 'border-white bg-white text-black'
-                                    : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
-                                }`}
-                                >
-                                <div className="text-xs lg:text-sm font-medium">{dateObj.dayName}</div>
-                                <div className="text-sm lg:text-lg font-bold">{dateObj.display}</div>
-                                {dateObj.isToday && <div className="text-xs text-gray-400 mt-1">Today</div>}
-                                {dateObj.isTomorrow && <div className="text-xs text-gray-400 mt-1">Tomorrow</div>}
-                                </button>
-                            ))}
-                            </div>
+                      <div>
+                        <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Date</Label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                          {availableDates.map((dateObj) => (
+                            <button
+                              key={dateObj.date}
+                              onClick={() => setFormData({ ...formData, date: dateObj.date })}
+                              className={`p-3 lg:p-4 rounded-lg border-2 transition-all duration-300 text-center ${
+                                formData.date === dateObj.date
+                                  ? 'border-white bg-white text-black'
+                                  : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
+                              }`}
+                            >
+                              <div className="text-xs lg:text-sm font-medium">{dateObj.dayName}</div>
+                              <div className="text-sm lg:text-lg font-bold">{dateObj.display}</div>
+                              {dateObj.isToday && <div className="text-xs text-gray-400 mt-1">Today</div>}
+                              {dateObj.isTomorrow && <div className="text-xs text-gray-400 mt-1">Tomorrow</div>}
+                            </button>
+                          ))}
                         </div>
+                      </div>
 
-                        {formData.date && (
-                            isLoadingAvailability ? (
-                                <div className="flex justify-center items-center h-32">
-                                    <Loader2 className="h-8 w-8 text-white animate-spin" />
-                                </div>
+                      {formData.date && (
+                        isLoadingAvailability ? (
+                          <div className="flex justify-center items-center h-32">
+                            <Loader2 className="h-8 w-8 text-white animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Time</Label>
+                            {timeSlots.length > 0 ? (
+                              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                                {timeSlots.map((time) => (
+                                  <button
+                                    key={time}
+                                    onClick={() => setFormData({ ...formData, time })}
+                                    className={`p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base ${
+                                      formData.time === time
+                                        ? 'border-white bg-white text-black'
+                                        : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
+                                    }`}
+                                  >
+                                    {time}
+                                  </button>
+                                ))}
+                              </div>
                             ) : (
-                                <div>
-                                    <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Time</Label>
-                                    {timeSlots.length > 0 ? (
-                                        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                            {timeSlots.map((time) => (
-                                            <button
-                                                key={time}
-                                                onClick={() => setFormData({ ...formData, time })}
-                                                className={`p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base ${
-                                                formData.time === time
-                                                    ? 'border-white bg-white text-black'
-                                                    : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
-                                                }`}
-                                            >
-                                                {time}
-                                            </button>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">
-                                            No available slots for this day. Please select another date.
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        )}
+                              <div className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">
+                                No available slots for this day. Please select another date.
+                              </div>
+                            )}
+
+                            <p className="text-sm text-gray-300">
+                              Don&apos;t see your preferred time? Call the shop at <span className="font-semibold">(365) 323-3680</span> and we&apos;ll try to fit you in.
+                            </p>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
 
                   {/* Step 3: Customer Information */}
                   {step === 3 && (
                     <div className="space-y-8">
-                        <div>
-                            <Label htmlFor="phone" className="text-white font-medium text-lg">Phone Number</Label>
-                            <p className="text-gray-400 text-sm mt-1 mb-4">Please enter your phone number to continue</p>
-                            <div className="space-y-4">
-                                <PhoneInput
-                                international
-                                defaultCountry="CA"
-                                value={formData.phone}
-                                onChange={(value) => setFormData({ ...formData, phone: value || '' })}
-                                className="phone-input"
-                                />
-                                {formData.phone && !isValidPhoneNumber(formData.phone) && (
-                                <p className="text-red-400 text-sm">Please enter a valid phone number</p>
-                                )}
-                                {formData.phone && isValidPhoneNumber(formData.phone) && !showRestOfForm && (
-                                <Button
-                                    onClick={handlePhoneSubmit}
-                                    className="bg-white text-black hover:bg-gray-200"
-                                >
-                                    Continue
-                                </Button>
-                                )}
-                            </div>
+                      <div>
+                        <Label htmlFor="phone" className="text-white font-medium text-lg">Phone Number</Label>
+                        <p className="text-gray-400 text-sm mt-1 mb-4">Please enter your phone number to continue</p>
+                        <div className="space-y-4">
+                          <PhoneInput
+                            international
+                            defaultCountry="CA"
+                            value={formData.phone}
+                            onChange={(value) => setFormData({ ...formData, phone: value || '' })}
+                            className="phone-input"
+                          />
+                          {formData.phone && !isValidPhoneNumber(formData.phone) && (
+                            <p className="text-red-400 text-sm">Please enter a valid phone number</p>
+                          )}
+                          {formData.phone && isValidPhoneNumber(formData.phone) && !showRestOfForm && (
+                            <Button
+                              onClick={handlePhoneSubmit}
+                              className="bg-white text-black hover:bg-gray-200"
+                            >
+                              Continue
+                            </Button>
+                          )}
                         </div>
+                      </div>
 
-                        {showRestOfForm && (
-                            <div className="space-y-6 border-t border-gray-700 pt-8">
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div>
-                                    <Label htmlFor="firstName" className="text-white font-medium">First Name</Label>
-                                    <Input
-                                    id="firstName"
-                                    value={formData.firstName}
-                                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
-                                    placeholder="Enter your first name"
-                                    />
-                                </div>
-                                <div>
-                                    <Label htmlFor="lastName" className="text-white font-medium">Last Name</Label>
-                                    <Input
-                                    id="lastName"
-                                    value={formData.lastName}
-                                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
-                                    placeholder="Enter your last name"
-                                    />
-                                </div>
-                                </div>
-                                <div>
-                                <Label htmlFor="email" className="text-white font-medium">Email Address</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    className="mt-2 bg-gray-700 border-gray-600 text-white"
-                                    placeholder="Enter your email address"
-                                />
-                                </div>
-                                <div>
-                                <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
-                                <Textarea
-                                    id="notes"
-                                    value={formData.notes}
-                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                    placeholder="Any special requests or notes for your barber..."
-                                    className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
-                                />
-                                </div>
-                                <div>
-                                <Label className="text-white font-medium mb-4 block">Payment Option</Label>
-                                <RadioGroup
-                                    value={formData.paymentMethod}
-                                    onValueChange={(value) => setFormData({ ...formData, paymentMethod: value as 'in-person' | 'now' })}
-                                    className="space-y-3"
-                                >
-                                    <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
-                                    {/* FIX 3: Changed value to 'in-person' */}
-                                    <RadioGroupItem value="in-person" id="in-person" />
-                                    <Label htmlFor="in-person" className="text-white cursor-pointer">
-                                        Pay at Appointment
-                                    </Label>
-                                    </div>
-                                    <div className="flex items-center space-x-3 p-4 border border-gray-600 rounded-lg">
-                                    <RadioGroupItem value="now" id="now" />
-                                    <Label htmlFor="now" className="text-white cursor-pointer">
-                                        Pay Now (Interac e-Transfer)
-                                    </Label>
-                                    </div>
-                                </RadioGroup>
-                                </div>
+                      {showRestOfForm && (
+                        <div className="space-y-6 border-t border-gray-700 pt-8">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                              <Label htmlFor="firstName" className="text-white font-medium">First Name</Label>
+                              <Input
+                                id="firstName"
+                                value={formData.firstName}
+                                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                                className="mt-2 bg-gray-700 border-gray-600 text-white"
+                                placeholder="Enter your first name"
+                              />
                             </div>
-                        )}
+                            <div>
+                              <Label htmlFor="lastName" className="text-white font-medium">Last Name</Label>
+                              <Input
+                                id="lastName"
+                                value={formData.lastName}
+                                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                                className="mt-2 bg-gray-700 border-gray-600 text-white"
+                                placeholder="Enter your last name"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="email" className="text-white font-medium">Email Address</Label>
+                            <Input
+                              id="email"
+                              type="email"
+                              value={formData.email}
+                              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                              className="mt-2 bg-gray-700 border-gray-600 text-white"
+                              placeholder="Enter your email address"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
+                            <Textarea
+                              id="notes"
+                              value={formData.notes}
+                              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                              placeholder="Any special requests or notes for your barber..."
+                              className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
+                            />
+                          </div>
+
+                          {/* Payment Option — make the ENTIRE card clickable */}
+                          <div>
+                            <Label className="text-white font-medium mb-4 block">Payment Option</Label>
+                            <RadioGroup
+                              value={formData.paymentMethod}
+                              onValueChange={(value) =>
+                                setFormData({ ...formData, paymentMethod: value as 'in-person' | 'now' })
+                              }
+                              className="space-y-3"
+                            >
+                              {/* Pay at Appointment */}
+                              <div
+                                onClick={() => setFormData({ ...formData, paymentMethod: 'in-person' })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setFormData({ ...formData, paymentMethod: 'in-person' });
+                                  }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
+                                  formData.paymentMethod === 'in-person'
+                                    ? 'border-white bg-gray-700'
+                                    : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <RadioGroupItem
+                                    value="in-person"
+                                    id="in-person"
+                                  />
+                                  <Label htmlFor="in-person" className="text-white cursor-pointer">
+                                    Pay at Appointment
+                                  </Label>
+                                </div>
+                              </div>
+
+                              {/* Pay Now */}
+                              <div
+                                onClick={() => setFormData({ ...formData, paymentMethod: 'now' })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setFormData({ ...formData, paymentMethod: 'now' });
+                                  }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
+                                  formData.paymentMethod === 'now'
+                                    ? 'border-white bg-gray-700'
+                                    : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <RadioGroupItem
+                                    value="now"
+                                    id="now"
+                                  />
+                                  <Label htmlFor="now" className="text-white cursor-pointer">
+                                    Pay Now (Interac e-Transfer)
+                                  </Label>
+                                </div>
+                              </div>
+                            </RadioGroup>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Step 4: Confirmation (No changes needed here) */}
+                  {/* Step 4: Confirmation */}
                   {step === 4 && (
                     <div className="space-y-6">
-                        <div className="bg-gray-700 p-6 rounded-lg border border-gray-600">
-                            <h3 className="text-lg lg:text-xl font-bold text-white mb-6">Booking Summary</h3>
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                                <span className="text-gray-300">Service:</span>
-                                <span className="font-semibold text-white">{selectedService?.name}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                                <span className="text-gray-300">Date:</span>
-                                <span className="font-semibold text-white">
-                                    {formData.date && moment(formData.date).format('MMMM DD, YYYY')}
-                                </span>
-                                </div>
-                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                                <span className="text-gray-300">Time:</span>
-                                <span className="font-semibold text-white">{formData.time}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-2 border-b border-gray-600">
-                                <span className="text-gray-300">Duration:</span>
-                                <span className="font-semibold text-white">
-                                    {selectedService?.duration} minutes
-                                </span>
-                                </div>
-                                <div className="flex justify-between items-center py-3 border-t border-gray-500">
-                                <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
-                                <span className="text-xl lg:text-2xl font-bold text-white">
-                                    ${selectedService?.price}
-                                </span>
-                                </div>
-                            </div>
+                      <div className="bg-gray-700 p-6 rounded-lg border border-gray-600">
+                        <h3 className="text-lg lg:text-xl font-bold text-white mb-6">Booking Summary</h3>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                            <span className="text-gray-300">Service:</span>
+                            <span className="font-semibold text-white">{selectedService?.name}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                            <span className="text-gray-300">Date:</span>
+                            <span className="font-semibold text-white">
+                              {formData.date && moment(formData.date).format('MMMM DD, YYYY')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                            <span className="text-gray-300">Time:</span>
+                            <span className="font-semibold text-white">{formData.time}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600">
+                            <span className="text-gray-300">Duration:</span>
+                            <span className="font-semibold text-white">
+                              {selectedService?.duration} minutes
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-3 border-t border-gray-500">
+                            <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
+                            <span className="text-xl lg:text-2xl font-bold text-white">
+                              ${selectedService?.price}
+                            </span>
+                          </div>
                         </div>
-                        <div className="bg-blue-900/30 border border-blue-700 p-6 rounded-lg">
-                            <h4 className="font-semibold text-white mb-3">Important Information:</h4>
-                            <ul className="list-disc list-inside space-y-2 text-gray-300">
-                                <li>Please arrive 5-10 minutes before your appointment</li>
-                                <li>Cancellations must be made 24 hours in advance</li>
-                                <li>You will receive an email confirmation shortly</li>
-                            </ul>
-                        </div>
+                      </div>
+                      <div className="bg-blue-900/30 border border-blue-700 p-6 rounded-lg">
+                        <h4 className="font-semibold text-white mb-3">Important Information:</h4>
+                        <ul className="list-disc list-inside space-y-2 text-gray-300">
+                          <li>Please arrive 5-10 minutes before your appointment</li>
+                          <li>Cancellations must be made 24 hours in advance</li>
+                          <li>You will receive an email confirmation shortly</li>
+                        </ul>
+                      </div>
                     </div>
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Sidebar (No changes needed here) */}
+            {/* Sidebar */}
             <div className="xl:col-span-1 order-1 xl:order-2">
               <div className="xl:sticky xl:top-8">
                 <Card className="bg-gray-800 border-gray-700">
@@ -651,16 +739,16 @@ export default function BookAppointment() {
                         <p className="text-xl font-bold text-white">${selectedService.price}</p>
                       </div>
                     ) : (
-                         <div className="p-4 bg-gray-700 rounded-lg text-gray-400">Select a service to begin.</div>
+                      <div className="p-4 bg-gray-700 rounded-lg text-gray-400">Select a service to begin.</div>
                     )}
-                    
+
                     {formData.date && (
                       <div className="p-4 bg-gray-700 rounded-lg">
                         <h4 className="font-semibold text-white mb-2">Date</h4>
                         <p className="text-gray-300">{moment(formData.date).format('MMMM DD, YYYY')}</p>
                       </div>
                     )}
-                    
+
                     {formData.time && (
                       <div className="p-4 bg-gray-700 rounded-lg">
                         <h4 className="font-semibold text-white mb-2">Time</h4>
@@ -681,15 +769,14 @@ export default function BookAppointment() {
         </div>
       </div>
 
-      {/* Sticky Navigation Buttons (No changes needed here) */}
+      {/* Sticky Navigation Buttons */}
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 p-4 z-40">
         <div className="container-max section-padding">
           <div className="flex justify-between items-center">
             <Button
-              variant="outline"
               onClick={handleBack}
               disabled={step === 1 || isLoading}
-              className={`${step === 1 ? 'invisible' : ''} border-gray-600 text-white hover:bg-gray-700`}
+              className={`${step === 1 ? 'invisible' : ''} bg-white text-black hover:bg-gray-200`}
             >
               <ChevronLeft className="h-4 w-4 mr-2" />
               Back
@@ -703,11 +790,11 @@ export default function BookAppointment() {
                   (step === 2 && (!formData.date || !formData.time)) ||
                   (step === 3 &&
                     (!formData.phone ||
-                     !isValidPhoneNumber(formData.phone) ||
-                     !showRestOfForm ||
-                     !formData.firstName ||
-                     !formData.lastName ||
-                     !formData.email))
+                      !isValidPhoneNumber(formData.phone) ||
+                      !showRestOfForm ||
+                      !formData.firstName ||
+                      !formData.lastName ||
+                      !formData.email))
                 }
                 className="bg-white text-black hover:bg-gray-200"
               >
@@ -721,9 +808,9 @@ export default function BookAppointment() {
                 className="bg-white text-black hover:bg-gray-200 w-48"
               >
                 {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                    'Confirm Booking'
+                  'Confirm Booking'
                 )}
               </Button>
             )}
