@@ -2,6 +2,14 @@ import apiClient from './apiClient';
 
 // --- Interfaces ---
 
+export interface AdditionalGuest {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  serviceId: string;
+  time: string;
+}
+
 export interface IBooking {
   _id: string;
   firstName: string;
@@ -16,6 +24,10 @@ export interface IBooking {
   notes?: string;
   paymentMethod: 'now' | 'in-person';
   status: 'pending' | 'confirmed' | 'cancelled';
+  serviceId?: string;
+  phoneNormalized?: string;
+  additionalGuests?: AdditionalGuest[];
+  cancellationNote?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +42,7 @@ export interface CreateBookingData {
   email: string;
   notes?: string;
   paymentMethod: 'now' | 'in-person';
+  additionalGuests?: AdditionalGuest[];
 }
 
 /**
@@ -49,6 +62,7 @@ export interface UpdateBookingData {
   lastName?: string;
   email?: string; // public legacy: ONE of (email) OR (phone + otp)
   notes?: string;
+  cancellationNote?: string;
   otp?: string;   // used with phone for OTP verification (legacy)
 }
 
@@ -64,6 +78,19 @@ export interface CancelBookingData {
   email?: string;
   phone?: string;
   otp?: string;
+  cancellationNote?: string;
+}
+
+export interface QueueJoinPayload {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone: string;
+  serviceId: string;
+  requestedDate: string;
+  preferredPaymentMethod?: 'now' | 'in-person';
+  notes?: string;
+  additionalGuests?: AdditionalGuest[];
 }
 
 export interface PhoneOtpStartPayload {
@@ -93,26 +120,52 @@ export interface ManageLookupResponse {
   booking: IBooking;
 }
 
+/** Shape for backend 409 conflict (slot invalid) */
+export interface SlotConflictErrorPayload {
+  message: string;
+  suggestions?: string[];
+}
+
 // --- Helpers ---
 
 function authHeader(token?: string) {
   return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
+function rethrowWithSuggestions(err: any) {
+  const status = err?.response?.status;
+  if (status === 409) {
+    const payload = err?.response?.data as SlotConflictErrorPayload;
+    const out: any = new Error(payload?.message || 'Selected time is unavailable.');
+    out.status = 409;
+    out.suggestions = payload?.suggestions || [];
+    throw out;
+  }
+  throw err;
+}
+
 // --- API Functions ---
 
 /**
  * Create a new booking.
+ * Returns 201 with { message, booking } on success.
+ * Throws Error with { status:409, suggestions:string[] } when slot invalid.
  * @access Public
  */
 export async function createBooking(
   data: CreateBookingData
-): Promise<{ message: string; booking: IBooking }> {
-  const response = await apiClient.post<{ message: string; booking: IBooking }>(
-    '/bookings',
-    data
-  );
-  return response.data;
+): Promise<{ message: string; booking: IBooking; additionalBookings?: IBooking[] }> {
+  try {
+    const response = await apiClient.post<{ message: string; booking: IBooking }>(
+      '/bookings',
+      data
+    );
+    return response.data;
+  } catch (err) {
+    rethrowWithSuggestions(err);
+  }
+  // Typescript flow
+  throw new Error('Unexpected error creating booking');
 }
 
 /**
@@ -202,6 +255,8 @@ export async function verifyEmailOtp(payload: EmailOtpVerifyPayload): Promise<Ve
  * Update a booking as a customer (public).
  * Preferred: pass `token` to authorize with Bearer; body can be changes only.
  * Legacy: omit token and include either `email` OR `phone` + `otp` in `data`.
+ *
+ * Throws Error with { status:409, suggestions:string[] } if target slot is invalid.
  * @access Public
  */
 export async function updateBookingPublic(
@@ -209,27 +264,38 @@ export async function updateBookingPublic(
   data: UpdateBookingData,
   token?: string
 ): Promise<{ message: string; booking: IBooking }> {
-  const response = await apiClient.put<{ message: string; booking: IBooking }>(
-    `/bookings/manage/${id}`,
-    data,
-    { headers: authHeader(token) }
-  );
-  return response.data;
+  try {
+    const response = await apiClient.put<{ message: string; booking: IBooking }>(
+      `/bookings/manage/${id}`,
+      data,
+      { headers: authHeader(token) }
+    );
+    return response.data;
+  } catch (err) {
+    rethrowWithSuggestions(err);
+  }
+  throw new Error('Unexpected error updating booking');
 }
 
 /**
  * Update a booking as an admin.
+ * Throws 409 with suggestions if slot invalid.
  * @access Private (Admin only)
  */
 export async function updateBookingAdmin(
   id: string,
   data: UpdateBookingData
 ): Promise<{ message: string; booking: IBooking }> {
-  const response = await apiClient.put<{ message: string; booking: IBooking }>(
-    `/bookings/${id}`,
-    data
-  );
-  return response.data;
+  try {
+    const response = await apiClient.put<{ message: string; booking: IBooking }>(
+      `/bookings/${id}`,
+      data
+    );
+    return response.data;
+  } catch (err) {
+    rethrowWithSuggestions(err);
+  }
+  throw new Error('Unexpected error updating booking (admin)');
 }
 
 /**
@@ -251,13 +317,25 @@ export async function cancelBookingPublic(
   return response.data;
 }
 
+export async function joinBookingQueue(data: QueueJoinPayload): Promise<{ message: string; entry: any }> {
+  const response = await apiClient.post<{ message: string; entry: any }>(
+    '/bookings/queue',
+    data
+  );
+  return response.data;
+}
+
 /**
  * Cancel a booking as an admin.
  * @access Private (Admin only)
  */
-export async function cancelBookingAdmin(id: string): Promise<{ message: string }> {
+export async function cancelBookingAdmin(
+  id: string,
+  data: { cancellationNote?: string } = {}
+): Promise<{ message: string }> {
   const response = await apiClient.patch<{ message: string }>(
-    `/bookings/${id}/cancel`
+    `/bookings/${id}/cancel`,
+    data
   );
   return response.data;
 }

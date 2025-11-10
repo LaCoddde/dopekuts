@@ -8,12 +8,14 @@ import {
   Mail,
   MessageSquare,
   Package,
+  PaperclipIcon,
   Scissors,
   Settings,
   X,
   Images,
   type LucideProps,
   MessageCircle,
+  Paperclip,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +38,7 @@ const navItems: NavItem[] = [
   // Existing
   { title: 'Booking', href: '/admin/booking', icon: Calendar },
   { title: 'Contact', href: '/admin/contact', icon: MessageSquare },
-  { title: 'Email', href: '/admin/email', icon: Mail },
+  { title: 'Message Center', href: '/admin/message-center', icon: PaperclipIcon },
   { title: 'Settings', href: '/admin/settings', icon: Settings },
   { title: 'Tickets', href: '/admin/tickets', icon: MessageCircle },
 

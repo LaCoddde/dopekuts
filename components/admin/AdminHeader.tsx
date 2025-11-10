@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { Menu, LogOut, User } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface AdminHeaderProps {
   onMenuClick: () => void;
@@ -23,6 +22,7 @@ export function AdminHeader({ onMenuClick }: AdminHeaderProps) {
           <button
             onClick={onMenuClick}
             className="lg:hidden text-gray-400 hover:text-white transition-colors"
+            type="button"
           >
             <Menu className="h-6 w-6" />
           </button>
@@ -44,15 +44,21 @@ export function AdminHeader({ onMenuClick }: AdminHeaderProps) {
             </div>
           </div>
 
-          <Button
+          <button
+            type="button"
             onClick={handleLogout}
-            variant="outline"
-            size="sm"
-            className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+            className="
+              inline-flex items-center justify-center
+              rounded-md border border-gray-700
+              px-3 py-2 text-sm font-medium
+              text-gray-300
+              hover:bg-gray-800 hover:text-white
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500
+            "
           >
             <LogOut className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Logout</span>
-          </Button>
+          </button>
         </div>
       </div>
     </header>

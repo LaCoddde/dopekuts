@@ -67,6 +67,7 @@ export interface IContactLookup {
   lastName: string;
   email: string;
   phone: string;
+  cancellationCount: number;
 }
 
 /**

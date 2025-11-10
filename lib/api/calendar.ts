@@ -1,52 +1,84 @@
-// dopekuts/lib/api/calendar.ts
 import apiClient from './apiClient';
 
-// --- Interfaces ---
-
 export interface IBreak {
-    startTime: string; // e.g., "12:00"
-    endTime: string;   // e.g., "13:00"
+  startTime: string;
+  endTime: string;
 }
 
 export interface ICalendarSettings {
-    _id?: string;
-    dayOfWeek: 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
-    isEnabled: boolean;
-    startTime: string;   // e.g., "09:00"
-    endTime: string;     // e.g., "17:00"
-    slotDuration: number; // in minutes
-    breaks: IBreak[];
+  _id?: string;
+  dayOfWeek: 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
+  isEnabled: boolean;
+  startTime: string;
+  endTime: string;
+  slotDuration: number;
+  breaks: IBreak[];
 }
 
-// --- API Functions ---
+export interface IBlockedTime {
+  startTime: string;
+  endTime: string;
+}
 
-/**
- * Get the calendar settings for all days of the week.
- * @access Public
- */
+export interface IWeeklyDay {
+  dayOfWeek: ICalendarSettings['dayOfWeek'];
+  startTime: string;
+  endTime: string;
+  slotDuration: number;
+  isEnabled: boolean;
+  blockedTimes: IBlockedTime[];
+}
+
+export interface IWeeklyCalendar {
+  _id?: string;
+  weekStart: string;
+  days: IWeeklyDay[];
+  slotDuration: number;
+}
+
 export async function getCalendarSettings(): Promise<ICalendarSettings[]> {
-    const response = await apiClient.get<ICalendarSettings[]>('/calendar/settings');
-    return response.data;
+  const response = await apiClient.get<ICalendarSettings[]>('/calendar/settings');
+  return response.data;
 }
 
-/**
- * Get available time slots for a specific date.
- * @param date - The target date in 'YYYY-MM-DD' format.
- * @access Public
- */
-export async function getAvailability(date: string): Promise<string[]> {
-    const response = await apiClient.get<string[]>(`/calendar/availability/${date}`);
-    return response.data;
+export async function getWeeklyCalendar(
+  weeks?: number,
+  start?: string
+): Promise<IWeeklyCalendar[]> {
+  const params: Record<string, string | number> = {};
+  if (typeof weeks === 'number') params.weeks = weeks;
+  if (start) params.start = start;
+  const response = await apiClient.get<IWeeklyCalendar[]>('/calendar/weeks', { params });
+  return response.data;
 }
 
-// --- Admin-Only Functions ---
+export async function updateWeeklyCalendar(
+  weeks: IWeeklyCalendar[]
+): Promise<{ message: string; weeks: IWeeklyCalendar[] }> {
+  const response = await apiClient.put<{ message: string; weeks: IWeeklyCalendar[] }>(
+    '/calendar/weeks',
+    weeks
+  );
+  return response.data;
+}
 
-/**
- * Create or update the calendar settings for all days.
- * @param settings - An array of settings objects, one for each day.
- * @access Private (Admin only)
- */
-export async function updateCalendarSettings(settings: ICalendarSettings[]): Promise<{ message: string; settings: ICalendarSettings[] }> {
-    const response = await apiClient.put<{ message: string; settings: ICalendarSettings[] }>('/calendar/settings', settings);
-    return response.data;
+export async function getAvailability(
+  date: string,
+  opts?: { serviceId?: string; serviceDuration?: number }
+): Promise<string[]> {
+  const params: Record<string, string | number> = {};
+  if (opts?.serviceId) params.serviceId = opts.serviceId;
+  if (typeof opts?.serviceDuration === 'number') params.serviceDuration = opts.serviceDuration;
+  const response = await apiClient.get<string[]>(`/calendar/availability/${date}`, { params });
+  return response.data;
+}
+
+export async function updateCalendarSettings(
+  settings: ICalendarSettings[]
+): Promise<{ message: string; settings: ICalendarSettings[] }> {
+  const response = await apiClient.put<{ message: string; settings: ICalendarSettings[] }>(
+    '/calendar/settings',
+    settings
+  );
+  return response.data;
 }

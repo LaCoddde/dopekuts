@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Calendar,
   Clock,
@@ -17,9 +18,25 @@ import {
   CircleCheck as CheckCircle,
   CircleAlert as AlertCircle,
   PlusCircle,
+  Pencil,
 } from 'lucide-react';
-import { getAllBookings, confirmPayment, cancelBookingAdmin, IBooking } from '@/lib/api/booking';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import {
+  getAllBookings,
+  confirmPayment,
+  cancelBookingAdmin,
+  updateBookingAdmin,
+  IBooking,
+} from '@/lib/api/booking';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import BookAppointmentPage from '@/app/book/page';
 
 /** ========== Date/Time helpers (no external libs) ========== */
@@ -118,6 +135,17 @@ export default function BookingManagement() {
 
   // Create booking modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isActionProcessing, setIsActionProcessing] = useState(false);
+  const [actionModal, setActionModal] = useState<{
+    open: boolean;
+    type: 'cancel' | 'reschedule' | null;
+    booking: IBooking | null;
+  }>({ open: false, type: null, booking: null });
+
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [noteModalBooking, setNoteModalBooking] = useState<IBooking | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   // Filters & sort
   const [searchTerm, setSearchTerm] = useState('');
@@ -189,23 +217,73 @@ export default function BookingManagement() {
       );
     } catch (err) {
       console.error('Failed to confirm booking:', err);
-      alert('Error: Could not confirm the booking.');
+      toast.error('Could not confirm the booking.');
     }
   };
 
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!window.confirm('Are you sure you want to cancel this booking?')) return;
+  const openActionModal = (type: 'cancel' | 'reschedule', booking: IBooking) => {
+    setActionModal({ open: true, type, booking });
+  };
+
+  const closeActionModal = () => {
+    setActionModal({ open: false, type: null, booking: null });
+  };
+
+  const handleCancelBooking = (booking: IBooking) => {
+    openActionModal('cancel', booking);
+  };
+
+  const handleReschedule = (booking: IBooking) => {
+    openActionModal('reschedule', booking);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!actionModal.booking) return;
+    setIsActionProcessing(true);
     try {
-      await cancelBookingAdmin(bookingId);
-      setBookings((prev) => prev.map((b) => (b._id === bookingId ? { ...b, status: 'cancelled' } : b)));
+      await cancelBookingAdmin(actionModal.booking._id);
+      setBookings((prev) =>
+        prev.map((b) =>
+          b._id === actionModal.booking!._id
+            ? { ...b, status: 'cancelled' as const }
+            : b
+        )
+      );
+      toast.success('Booking cancelled.');
+      closeActionModal();
     } catch (err) {
       console.error('Failed to cancel booking:', err);
-      alert('Error: Could not cancel the booking.');
+      toast.error('Could not cancel the booking.');
+    } finally {
+      setIsActionProcessing(false);
     }
   };
 
-  const handleReschedule = (bookingId: string) => {
-    alert(`Reschedule booking #${bookingId} - This would open a date/time picker modal`);
+  const openNoteEditor = (booking: IBooking) => {
+    setNoteModalBooking(booking);
+    setNoteDraft(booking.cancellationNote ?? '');
+    setNoteModalOpen(true);
+  };
+
+  const handleSaveNote = async () => {
+    if (!noteModalBooking) return;
+    setIsSavingNote(true);
+    try {
+      const payload = {
+        cancellationNote: noteDraft.trim() || undefined,
+      };
+      const { booking: updatedBooking } = await updateBookingAdmin(noteModalBooking._id, payload);
+      setBookings((prev) =>
+        prev.map((b) => (b._id === updatedBooking._id ? updatedBooking : b))
+      );
+      toast.success('Cancellation note saved.');
+      setNoteModalOpen(false);
+    } catch (error) {
+      console.error('Failed to save cancellation note:', error);
+      toast.error('Unable to save the cancellation note.');
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   // Available months from data + ensure current month is present
@@ -519,6 +597,35 @@ export default function BookingManagement() {
                               </p>
                             </div>
                           )}
+                          {booking.status === 'cancelled' && (
+                            <div className="mt-2 md:mt-3 p-2 md:p-3 bg-red-900/40 rounded-md border border-red-600">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs sm:text-sm text-red-200 font-medium">
+                                  Cancellation Note
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => openNoteEditor(booking)}
+                                  className="text-red-100 hover:bg-red-800/60"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  <span className="sr-only">Edit note</span>
+                                </Button>
+                              </div>
+                              <p className="text-xs sm:text-sm text-red-100 mt-1">
+                                {booking.cancellationNote || 'Add any details staff should know about this cancellation.'}
+                              </p>
+                            </div>
+                          )}
+                          {booking.additionalGuests && booking.additionalGuests.length > 0 && (
+                            <div className="mt-2 md:mt-3 p-2 md:p-3 bg-gray-800 rounded-md border border-gray-600">
+                              <p className="text-xs sm:text-sm text-gray-100">
+                                <strong>Additional Guest{booking.additionalGuests.length > 1 ? 's' : ''}:</strong>{' '}
+                                {booking.additionalGuests.map((guest) => `${guest.firstName} ${guest.lastName}`).join('; ')}
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         {/* Action Buttons */}
@@ -541,7 +648,7 @@ export default function BookingManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleReschedule(booking._id)}
+                                    onClick={() => handleReschedule(booking)}
                                     className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white w-full"
                                   >
                                     <Edit className="h-4 w-4 mr-1" />
@@ -551,7 +658,7 @@ export default function BookingManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleCancelBooking(booking._id)}
+                                    onClick={() => handleCancelBooking(booking)}
                                     className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white w-full"
                                   >
                                     <X className="h-4 w-4 mr-1" />
@@ -585,6 +692,81 @@ export default function BookingManagement() {
           <div className="overflow-y-auto w-full h-full rounded-lg">
             <BookAppointmentPage />
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={actionModal.open} onOpenChange={(open) => !open && closeActionModal()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {actionModal.type === 'cancel'
+                ? 'Confirm cancellation'
+                : 'Reschedule booking'}
+            </DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const booking = actionModal.booking;
+                if (actionModal.type === 'cancel') {
+                  return booking
+                    ? `This will cancel ${booking.firstName} ${booking.lastName} on ${dateFmt.format(
+                        toBookingDateTime(booking)
+                      )} at ${booking.time}.`
+                    : 'This will cancel the selected booking.';
+                }
+                return booking
+                  ? `Rescheduling ${booking.firstName} ${booking.lastName} is coming soon.`
+                  : 'Rescheduling is coming soon.';
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4 gap-2">
+            <Button
+              variant="outline"
+              onClick={closeActionModal}
+              disabled={isActionProcessing}
+            >
+              {actionModal.type === 'cancel' ? 'Keep booking' : 'Close'}
+            </Button>
+            {actionModal.type === 'cancel' ? (
+              <Button onClick={handleConfirmCancel} disabled={isActionProcessing}>
+                {isActionProcessing ? 'Cancelling...' : 'Cancel booking'}
+              </Button>
+            ) : (
+              <Button onClick={closeActionModal}>Ok</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={noteModalOpen} onOpenChange={setNoteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancellation note</DialogTitle>
+            <DialogDescription>
+              Add a short message describing why the customer cancelled. Only staff see this.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Textarea
+            value={noteDraft}
+            onChange={(event) => setNoteDraft(event.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 text-white min-h-[120px]"
+            placeholder="Enter any context you want other staff to see..."
+          />
+
+          <DialogFooter className="mt-4 gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setNoteModalOpen(false)}
+              disabled={isSavingNote}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveNote} disabled={isSavingNote}>
+              {isSavingNote ? 'Saving...' : 'Save note'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

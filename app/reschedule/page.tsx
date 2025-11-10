@@ -377,7 +377,7 @@ export default function RescheduleAppointment() {
         .phone-input .PhoneInputInput:focus {
           outline: none !important;
           border-color: #9ca3af !important; /* gray-400 */
-          box-shadow: 0 0 0 2px rgba(255,255,255,0.12) !important;
+          box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12) !important;
         }
       `}</style>
 
@@ -389,9 +389,7 @@ export default function RescheduleAppointment() {
             <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto">
               Verify your identity, then pick a new date and time
             </p>
-            {errorMsg && (
-              <p className="text-sm text-red-400 mt-3">{errorMsg}</p>
-            )}
+            {errorMsg && <p className="text-sm text-red-400 mt-3">{errorMsg}</p>}
           </div>
         </div>
       </div>
@@ -446,8 +444,12 @@ export default function RescheduleAppointment() {
                 {/* Step 1: Verify */}
                 {step === 1 && (
                   <div className="space-y-8">
+                    {/* Verification method toggle (fixed selected + hover states) */}
                     <div className="flex gap-3">
                       <Button
+                        type="button"
+                        variant="outline"
+                        aria-pressed={verifyMethod === 'phone'}
                         onClick={() => {
                           setVerifyMethod('phone');
                           setEmail('');
@@ -456,16 +458,19 @@ export default function RescheduleAppointment() {
                           setVerified(false);
                           setErrorMsg('');
                         }}
-                        className={
+                        className={`flex-1 text-sm font-medium border ${
                           verifyMethod === 'phone'
-                            ? 'bg-white text-black hover:bg-gray-200'
-                            : 'border-gray-600 text-white'
-                        }
-                        variant={verifyMethod === 'phone' ? undefined : 'outline'}
+                            ? 'bg-white text-black border-white shadow-lg hover:bg-white hover:text-black'
+                            : 'bg-gray-800 text-gray-200 border-gray-600 hover:bg-gray-700 hover:text-white'
+                        }`}
                       >
                         Use Phone
                       </Button>
+
                       <Button
+                        type="button"
+                        variant="outline"
+                        aria-pressed={verifyMethod === 'email'}
                         onClick={() => {
                           setVerifyMethod('email');
                           setPhone('');
@@ -474,12 +479,11 @@ export default function RescheduleAppointment() {
                           setVerified(false);
                           setErrorMsg('');
                         }}
-                        className={
+                        className={`flex-1 text-sm font-medium border ${
                           verifyMethod === 'email'
-                            ? 'bg-white text-black hover:bg-gray-200'
-                            : 'border-gray-600 bg-white text-black hover:bg-gray-200'
-                        }
-                        variant={verifyMethod === 'email' ? undefined : 'outline'}
+                            ? 'bg-white text-black border-white shadow-lg hover:bg-white hover:text-black'
+                            : 'bg-gray-800 text-gray-200 border-gray-600 hover:bg-gray-700 hover:text-white'
+                        }`}
                       >
                         Use Email
                       </Button>
@@ -640,7 +644,9 @@ export default function RescheduleAppointment() {
                               key={d.date}
                               onClick={() => setNewDate(d.date)}
                               className={`p-3 lg:p-4 rounded-lg border-2 transition-all duration-300 text-center ${
-                                active ? 'border-white bg-white text-black' : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
+                                active
+                                  ? 'border-white bg-white text-black'
+                                  : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
                               }`}
                             >
                               <div>
@@ -667,7 +673,9 @@ export default function RescheduleAppointment() {
                                 key={t}
                                 onClick={() => setNewTime(t)}
                                 className={`p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base ${
-                                  active ? 'border-white bg-white text-black' : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
+                                  active
+                                    ? 'border-white bg-white text-black'
+                                    : 'border-gray-600 bg-gray-700 text-white hover:border-gray-400'
                                 }`}
                               >
                                 {t}
@@ -692,7 +700,9 @@ export default function RescheduleAppointment() {
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-600">
                           <span className="text-gray-300">New Date:</span>
-                          <span className="font-semibold text-white">{moment(newDate).format('MMMM DD, YYYY')}</span>
+                          <span className="font-semibold text-white">
+                            {moment(newDate).format('MMMM DD, YYYY')}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-600">
                           <span className="text-gray-300">New Time:</span>
@@ -704,7 +714,9 @@ export default function RescheduleAppointment() {
                         </div>
                         <div className="flex justify-between items-center py-3 border-t border-gray-500">
                           <span className="text-base lg:text-lg font-semibold text-white">Total:</span>
-                          <span className="text-xl lg:text-2xl font-bold text-white">${appointment.price}</span>
+                          <span className="text-xl lg:text-2xl font-bold text-white">
+                            ${appointment.price}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -736,21 +748,27 @@ export default function RescheduleAppointment() {
                     <>
                       <div className="p-4 bg-gray-700 rounded-lg">
                         <h4 className="font-semibold text-white mb-2">Service</h4>
-                        <p className="text-gray-300 text-sm mb-2">{appointment.duration} minutes</p>
+                        <p className="text-gray-300 text-sm mb-2">
+                          {appointment.duration} minutes
+                        </p>
                         <p className="text-xl font-bold text-white">{appointment.service}</p>
                         <p className="text-gray-300 mt-1">${appointment.price}</p>
                       </div>
 
                       <div className="p-4 bg-gray-700 rounded-lg">
                         <h4 className="font-semibold text-white mb-2">Currently Scheduled</h4>
-                        <p className="text-gray-300">{moment(appointment.date).format('MMMM DD, YYYY')}</p>
+                        <p className="text-gray-300">
+                          {moment(appointment.date).format('MMMM DD, YYYY')}
+                        </p>
                         <p className="text-gray-300">{appointment.time}</p>
                       </div>
 
                       {newDate && (
                         <div className="p-4 bg-gray-700 rounded-lg">
                           <h4 className="font-semibold text-white mb-2">New Selection</h4>
-                          <p className="text-gray-300">{moment(newDate).format('MMMM DD, YYYY')}</p>
+                          <p className="text-gray-300">
+                            {moment(newDate).format('MMMM DD, YYYY')}
+                          </p>
                           <p className="text-gray-300">{newTime || '-'}</p>
                         </div>
                       )}

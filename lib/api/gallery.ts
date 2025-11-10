@@ -10,6 +10,21 @@ export interface IGallery {
   updatedAt: string;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+
+const fetchWithApiBase = async (path: string, options: RequestInit = {}) => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: 'include',
+    ...options,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gallery request failed: ${response.statusText}`);
+ }
+
+  return response;
+};
+
 /**
  * Fetches all gallery items.
  * Mirrors getAllProducts()
@@ -17,10 +32,7 @@ export interface IGallery {
  */
 export const getAllGalleryItems = async (): Promise<IGallery[]> => {
   try {
-    const response = await fetch('/api/v1/gallery');
-    if (!response.ok) {
-      throw new Error('Failed to fetch gallery items');
-    }
+    const response = await fetchWithApiBase('/gallery');
     const data = await response.json();
     return data;
   } catch (error) {
@@ -37,14 +49,10 @@ export const getAllGalleryItems = async (): Promise<IGallery[]> => {
  */
 export const createGalleryItem = async (formData: FormData): Promise<IGallery> => {
   try {
-    const response = await fetch('/api/v1/gallery', {
+    const response = await fetchWithApiBase('/gallery', {
       method: 'POST',
       body: formData,
-      // 'Content-Type': 'multipart/form-data' is set by browser automatically for FormData
     });
-    if (!response.ok) {
-      throw new Error('Failed to create gallery item');
-    }
     const data = await response.json();
     return data;
   } catch (error) {
@@ -61,13 +69,10 @@ export const createGalleryItem = async (formData: FormData): Promise<IGallery> =
  */
 export const updateGalleryItem = async (id: string, formData: FormData): Promise<IGallery> => {
   try {
-    const response = await fetch(`/api/v1/gallery/${id}`, {
+    const response = await fetchWithApiBase(`/gallery/${id}`, {
       method: 'PUT',
       body: formData,
     });
-    if (!response.ok) {
-      throw new Error('Failed to update gallery item');
-    }
     const data = await response.json();
     return data;
   } catch (error) {
@@ -83,12 +88,9 @@ export const updateGalleryItem = async (id: string, formData: FormData): Promise
  */
 export const deleteGalleryItem = async (id: string): Promise<{ message: string }> => {
   try {
-    const response = await fetch(`/api/v1/gallery/${id}`, {
+    const response = await fetchWithApiBase(`/gallery/${id}`, {
       method: 'DELETE',
     });
-    if (!response.ok) {
-      throw new Error('Failed to delete gallery item');
-    }
     const data = await response.json();
     return data; // Backend returns { message: '...' }
   } catch (error) {

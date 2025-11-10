@@ -1,12 +1,13 @@
 // dopecut/dopekuts-main/app/book/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import type React from 'react';
 import { useSearchParams } from 'next/navigation';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import { isValidPhoneNumber, E164Number } from 'libphonenumber-js';
-import { Scissors, Calendar, Clock, User, CreditCard, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Scissors, Calendar, X, Clock, User, CreditCard, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -24,8 +25,20 @@ import toast from 'react-hot-toast';
 
 // --- API Imports ---
 import { getAllServices, IService } from '@/lib/api/service';
-import { getCalendarSettings, getAvailability, ICalendarSettings } from '@/lib/api/calendar';
-import { createBooking, IBooking, CreateBookingData } from '@/lib/api/booking';
+import {
+  getCalendarSettings,
+  getWeeklyCalendar,
+  getAvailability,
+  ICalendarSettings,
+  IWeeklyCalendar,
+} from '@/lib/api/calendar';
+import {
+  createBooking,
+  IBooking,
+  CreateBookingData,
+  joinBookingQueue,
+  QueueJoinPayload,
+} from '@/lib/api/booking';
 import { getContactByPhone, IContactLookup } from '@/lib/api/contact';
 
 // --- Helper Types ---
@@ -35,6 +48,39 @@ interface AvailableDate {
   dayName: string;  // "ddd"
   isToday: boolean;
   isTomorrow: boolean;
+  isDisabled?: boolean;
+}
+
+interface GuestEntry {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  serviceId: string;
+  time: string;
+}
+
+function findWeeklyDay(date: string, weeks: IWeeklyCalendar[]): IWeeklyCalendar['days'][0] | null {
+  const weekStart = moment(date, 'YYYY-MM-DD').startOf('isoWeek').format('YYYY-MM-DD');
+  const week = weeks.find((w) => w.weekStart === weekStart);
+  if (!week) return null;
+  const dayOfWeek = moment(date, 'YYYY-MM-DD').format('dddd') as IWeeklyCalendar['days'][0]['dayOfWeek'];
+  return week.days.find((d) => d.dayOfWeek === dayOfWeek) ?? null;
+}
+
+/** Compress slots to the service’s cadence when it divides the day’s slot step cleanly */
+function compressSlotsForService(slots: string[], serviceMin: number, slotStepMin: number): string[] {
+  if (!serviceMin || !slotStepMin) return slots;
+  if (serviceMin % slotStepMin !== 0) return slots; // don’t guess for non-multiples like 45 vs 30
+  const takeEvery = Math.max(1, Math.floor(serviceMin / slotStepMin));
+  if (takeEvery <= 1) return slots;
+  return slots.filter((_, i) => i % takeEvery === 0);
+}
+
+/** Find the slotDuration for the selected date from calendar settings */
+function getSlotDurationForDate(settings: ICalendarSettings[], date: string): number {
+  const dow = moment(date, 'YYYY-MM-DD').format('dddd');
+  const s = settings.find(x => x.dayOfWeek === dow);
+  return s?.slotDuration ?? 30;
 }
 
 export default function BookAppointment() {
@@ -45,11 +91,12 @@ export default function BookAppointment() {
 
   // --- Data from API ---
   const [services, setServices] = useState<IService[]>([]);
+  const [calendarSettings, setCalendarSettings] = useState<ICalendarSettings[]>([]);
   const [availableDates, setAvailableDates] = useState<AvailableDate[]>([]);
+  const [weeklySchedules, setWeeklySchedules] = useState<IWeeklyCalendar[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(true);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
-
   // --- Form & UI State ---
   const [formData, setFormData] = useState({
     serviceId: '',
@@ -63,6 +110,87 @@ export default function BookAppointment() {
     paymentMethod: 'in-person' as 'in-person' | 'now',
   });
   const [showRestOfForm, setShowRestOfForm] = useState(false);
+  const [guestEntries, setGuestEntries] = useState<GuestEntry[]>([]);
+  const [cancellationCount, setCancellationCount] = useState(0);
+  const [queueRequestedDate, setQueueRequestedDate] = useState<string | null>(null);
+  const [queueJoined, setQueueJoined] = useState(false);
+  const [isJoiningQueue, setIsJoiningQueue] = useState(false);
+
+  const usedTimesList = useMemo(() => {
+    const list = guestEntries.map((guest) => guest.time).filter(Boolean);
+    if (formData.time) {
+      list.push(formData.time);
+    }
+    return Array.from(new Set(list));
+  }, [guestEntries, formData.time]);
+
+  const usedTimesSet = useMemo(() => new Set(usedTimesList), [usedTimesList]);
+
+  const remainingSlotsForNewGuest = useMemo(
+    () => timeSlots.filter((slot) => !usedTimesSet.has(slot)),
+    [timeSlots, usedTimesSet]
+  );
+
+  const canAddGuest = Boolean(formData.date) && remainingSlotsForNewGuest.length > 0;
+  const mainTimeOptions = useMemo(
+    () => timeSlots.filter((slot) => !usedTimesSet.has(slot) || slot === formData.time),
+    [timeSlots, usedTimesSet, formData.time]
+  );
+
+  const timeOptionsForGuest = (currentTime?: string) =>
+    timeSlots.filter((slot) => !usedTimesSet.has(slot) || slot === currentTime);
+
+  useEffect(() => {
+    if (!canAddGuest && guestEntries.length > 0) {
+      setGuestEntries([]);
+      toast('Only one slot remains for the selected day; additional guests were removed.');
+    }
+  }, [canAddGuest, guestEntries.length]);
+
+  const fetchSlotsForService = async ({
+    targetDate,
+    serviceId,
+    setSlots,
+    setLoading,
+    resetTime,
+    setAlt,
+    errorMessage,
+  }: {
+    targetDate: string;
+    serviceId: string;
+    setSlots: React.Dispatch<React.SetStateAction<string[]>>;
+    setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+    resetTime?: () => void;
+    setAlt?: React.Dispatch<React.SetStateAction<string[]>>;
+    errorMessage?: string;
+  }) => {
+    try {
+      setLoading(true);
+      setAlt?.([]);
+      resetTime?.();
+
+      const rawSlots = await getAvailability(targetDate, { serviceId });
+      const selectedService = services.find((svc) => svc._id === serviceId);
+      const slotStep = getSlotDurationForDate(calendarSettings, targetDate);
+      const compressedSlots = compressSlotsForService(
+        rawSlots,
+        selectedService?.duration ?? 0,
+        slotStep
+      );
+      setSlots(compressedSlots);
+    } catch (error) {
+      toast.error(
+        errorMessage ||
+          `Failed to get available times for ${moment(targetDate).format('MMMM D')}.`
+      );
+      console.error('Error fetching availability:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Suggestions when backend rejects slot (HTTP 409) ---
+  const [altSuggestions, setAltSuggestions] = useState<string[]>([]);
 
   // --- Confirmation State ---
   const [confirmedBooking, setConfirmedBooking] = useState<IBooking | null>(null);
@@ -81,8 +209,11 @@ export default function BookAppointment() {
           getAllServices(),
           getCalendarSettings(),
         ]);
+        const weeklyData = await getWeeklyCalendar(4);
         setServices(servicesResponse);
-        generateAvailableDates(settingsResponse);
+        setCalendarSettings(settingsResponse); // store settings so we can read slotDuration for the chosen date
+        setWeeklySchedules(weeklyData);
+        generateAvailableDates(settingsResponse, weeklyData);
       } catch (error) {
         toast.error('Failed to load initial booking data. Please try again.');
         console.error('Error fetching initial data:', error);
@@ -93,25 +224,42 @@ export default function BookAppointment() {
     fetchInitialData();
   }, [searchParams]);
 
-  // --- Fetch Availability on Date Change ---
   useEffect(() => {
-    if (formData.date) {
-      const fetchAvailability = async () => {
-        try {
-          setIsLoadingAvailability(true);
-          setFormData(prev => ({ ...prev, time: '' })); // Reset time selection
-          const slots = await getAvailability(formData.date);
-          setTimeSlots(slots);
-        } catch (error) {
-          toast.error(`Failed to get available times for ${formData.date}.`);
-          console.error('Error fetching availability:', error);
-        } finally {
-          setIsLoadingAvailability(false);
-        }
-      };
-      fetchAvailability();
+    if (calendarSettings.length > 0 && weeklySchedules.length > 0) {
+      generateAvailableDates(calendarSettings, weeklySchedules);
     }
-  }, [formData.date]);
+  }, [calendarSettings, weeklySchedules]);
+
+  // --- Refetch availability when date or service changes (service-aware) ---
+  useEffect(() => {
+    if (!formData.date || !formData.serviceId) return;
+
+    fetchSlotsForService({
+      targetDate: formData.date,
+      serviceId: formData.serviceId,
+      setSlots: setTimeSlots,
+      setLoading: setIsLoadingAvailability,
+      setAlt: setAltSuggestions,
+      resetTime: () => setFormData((prev) => ({ ...prev, time: '' })),
+      errorMessage: `Failed to load slots for ${moment(formData.date).format('MMMM D')}.`,
+    });
+    // include calendarSettings & services so compression stays in sync
+  }, [formData.date, formData.serviceId, calendarSettings, services]);
+
+  // --- If user changes service after picking a time, clear time ---
+  useEffect(() => {
+    if (!formData.serviceId) return;
+    if (formData.time) {
+      setFormData(prev => ({ ...prev, time: '' }));
+    }
+  }, [formData.serviceId]);
+
+  useEffect(() => {
+    setQueueRequestedDate(null);
+    setQueueJoined(false);
+    setIsJoiningQueue(false);
+    setGuestEntries([]);
+  }, [formData.date, formData.serviceId]);
 
   // --- Scroll to top whenever step changes ---
   useEffect(() => {
@@ -120,8 +268,19 @@ export default function BookAppointment() {
     }
   }, [step]);
 
+  const needsPrepay = cancellationCount >= 3;
+
+  useEffect(() => {
+    if (needsPrepay && formData.paymentMethod !== 'now') {
+      setFormData((prev) => ({ ...prev, paymentMethod: 'now' }));
+    }
+  }, [needsPrepay, formData.paymentMethod]);
+
   // --- Helper Functions ---
-  const generateAvailableDates = (settings: ICalendarSettings[]) => {
+  const generateAvailableDates = (
+    settings: ICalendarSettings[],
+    weekly: IWeeklyCalendar[]
+  ) => {
     const enabledDays = settings
       .filter(day => day.isEnabled)
       .map(day => day.dayOfWeek);
@@ -139,6 +298,8 @@ export default function BookAppointment() {
 
     for (let i = 0; count < 14 && i < 30; i++) {
       const date = today.clone().add(i, 'days');
+      const weeklyDay = findWeeklyDay(date.format('YYYY-MM-DD'), weekly);
+      if (weeklyDay && !weeklyDay.isEnabled) continue;
       if (enabledDayIndexes.includes(date.day())) {
         dates.push({
           date: date.format('YYYY-MM-DD'),
@@ -146,6 +307,7 @@ export default function BookAppointment() {
           dayName: date.format('ddd'),
           isToday: date.isSame(moment(), 'day'),
           isTomorrow: date.isSame(moment().add(1, 'day'), 'day'),
+          isDisabled: weeklyDay ? !weeklyDay.isEnabled : false,
         });
         count++;
       }
@@ -168,19 +330,121 @@ export default function BookAppointment() {
 
       // Autofill via public contact lookup (new endpoint)
       try {
-        const contact: IContactLookup = await getContactByPhone(formData.phone);
-        // Split full name into first/last best-effort
-        const [first, ...rest] = (contact.name || '').trim().split(/\s+/);
-        const last = rest.join(' ');
-        setFormData(prev => ({
-          ...prev,
-          firstName: first || prev.firstName,
-          lastName: last || prev.lastName,
-          email: contact.email || prev.email,
-        }));
+      const contact: IContactLookup = await getContactByPhone(formData.phone);
+      // Split full name into first/last best-effort
+      const [first, ...rest] = (contact.name || '').trim().split(/\s+/);
+      const last = rest.join(' ');
+      setFormData(prev => ({
+        ...prev,
+        firstName: first || prev.firstName,
+        lastName: last || prev.lastName,
+        email: contact.email || prev.email,
+      }));
+      setCancellationCount(contact.cancellationCount ?? 0);
       } catch {
         // No contact found or lookup failed -> keep fields empty
+        setCancellationCount(0);
       }
+    }
+  };
+
+  const handleQueueRequest = () => {
+    if (!formData.serviceId || !formData.date) {
+      toast.error('Please select a service and date before joining the queue.');
+      return;
+    }
+    setQueueRequestedDate(formData.date);
+    setQueueJoined(false);
+    setStep(3);
+    toast('Go to the contact step to finalize your queue request.');
+  };
+
+  const addGuestEntry = () => {
+    if (!canAddGuest) return;
+    setGuestEntries((prev) => [
+      ...prev,
+      {
+        firstName: '',
+        lastName: '',
+        email: '',
+        serviceId: formData.serviceId || '',
+        time: formData.time || '',
+      },
+    ]);
+  };
+
+  const updateGuestEntry = (index: number, data: Partial<GuestEntry>) => {
+    setGuestEntries((prev) =>
+      prev.map((entry, idx) => (idx === index ? { ...entry, ...data } : entry))
+    );
+  };
+
+  const removeGuestEntry = (index: number) => {
+    setGuestEntries((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const buildAdditionalGuests = () => {
+    return guestEntries
+      .filter(
+        (guest) =>
+          guest.firstName &&
+          guest.lastName &&
+          guest.serviceId &&
+          guest.time
+      )
+      .map((guest) => ({
+        firstName: guest.firstName,
+        lastName: guest.lastName,
+        email: guest.email || undefined,
+        serviceId: guest.serviceId,
+        time: guest.time,
+      }));
+  };
+
+  const handleJoinQueue = async () => {
+    if (!queueRequestedDate) return;
+    if (!formData.serviceId) {
+      toast.error('Select a service before joining the queue.');
+      return;
+    }
+    if (!formData.firstName || !formData.lastName) {
+      toast.error('Please provide your name before joining the queue.');
+      setStep(3);
+      return;
+    }
+    if (!isValidPhoneNumber(formData.phone)) {
+      toast.error('Please provide a valid phone number to join the queue.');
+      setStep(3);
+      return;
+    }
+
+    const guestPayload = buildAdditionalGuests();
+
+    const payload: QueueJoinPayload = {
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      email: formData.email,
+      phone: formData.phone,
+      serviceId: formData.serviceId,
+      requestedDate: queueRequestedDate,
+      preferredPaymentMethod: formData.paymentMethod,
+      notes: formData.notes,
+      additionalGuests: guestPayload,
+    };
+
+    try {
+      setIsJoiningQueue(true);
+      await joinBookingQueue(payload);
+      toast.success('You are now in the queue for that day. We will text you if a slot opens.');
+      setQueueJoined(true);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        (error as Error)?.message ||
+        'Failed to join the queue.';
+      toast.error(message);
+    } finally {
+      setIsJoiningQueue(false);
     }
   };
 
@@ -188,26 +452,48 @@ export default function BookAppointment() {
     setIsLoading(true);
     toast.loading('Submitting your booking...');
 
+    const additionalGuests = buildAdditionalGuests();
+    const payload: CreateBookingData = {
+      serviceId: formData.serviceId,
+      date: formData.date,
+      time: formData.time,
+      phone: formData.phone as E164Number,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      email: formData.email,
+      notes: formData.notes,
+      paymentMethod: formData.paymentMethod,
+      additionalGuests: additionalGuests.length > 0 ? additionalGuests : undefined,
+    };
+
     try {
-      const payload: CreateBookingData = {
-        serviceId: formData.serviceId,
-        date: formData.date,
-        time: formData.time,
-        phone: formData.phone as E164Number,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        notes: formData.notes,
-        paymentMethod: formData.paymentMethod,
-      };
       const result = await createBooking(payload);
       setConfirmedBooking(result.booking);
       toast.dismiss();
       toast.success(result.message);
     } catch (error: any) {
       toast.dismiss();
-      const errorMessage = error.response?.data?.message || 'Failed to create booking.';
-      toast.error(errorMessage);
+      if (error?.status === 409) {
+        const msg = (error as Error)?.message || 'Selected time is unavailable.';
+        toast.error(msg);
+
+        const selectedService = services.find((s) => s._id === formData.serviceId);
+        const slotStep = getSlotDurationForDate(calendarSettings, formData.date);
+        const compressed = compressSlotsForService(
+          error?.suggestions || [],
+          selectedService?.duration ?? 0,
+          slotStep
+        );
+
+        setAltSuggestions(compressed);
+        setStep(2); // return user to time selection
+      } else {
+        const errorMessage =
+          error?.response?.data?.message ||
+          (error as Error)?.message ||
+          'Failed to create booking.';
+        toast.error(errorMessage);
+      }
       console.error('Booking submission error:', error);
     } finally {
       setIsLoading(false);
@@ -228,7 +514,12 @@ export default function BookAppointment() {
       notes: '',
       paymentMethod: 'in-person',
     });
+    setAltSuggestions([]);
     setShowRestOfForm(false);
+    setGuestEntries([]);
+    setQueueRequestedDate(null);
+    setQueueJoined(false);
+    setIsJoiningQueue(false);
   };
 
   const selectedService = services.find((s) => s._id === formData.serviceId);
@@ -295,6 +586,14 @@ export default function BookAppointment() {
                     <span className="text-gray-300">Customer:</span>
                     <span className="text-white font-medium">{confirmedBooking.firstName} {confirmedBooking.lastName}</span>
                   </div>
+                  {confirmedBooking.additionalGuests && confirmedBooking.additionalGuests.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">Additional Guest:</span>
+                      <span className="text-white font-medium">
+                        {confirmedBooking.additionalGuests.map((guest) => `${guest.firstName} ${guest.lastName}`).join(', ')}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t border-gray-600 pt-3">
                     <span className="text-gray-300">Total:</span>
                     <span className="text-white font-bold text-lg">${selectedService?.price}</span>
@@ -499,12 +798,16 @@ export default function BookAppointment() {
                         ) : (
                           <div className="space-y-4">
                             <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Time</Label>
+                            <p className="text-xs text-gray-400 mt-0 mb-3">Time slots are spaced 35 minutes apart to give each guest a fresh start.</p>
                             {timeSlots.length > 0 ? (
                               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                {timeSlots.map((time) => (
+                                {mainTimeOptions.map((time) => (
                                   <button
                                     key={time}
-                                    onClick={() => setFormData({ ...formData, time })}
+                                    onClick={() => {
+                                      setFormData({ ...formData, time });
+                                      setAltSuggestions([]);
+                                    }}
                                     className={`p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base ${
                                       formData.time === time
                                         ? 'border-white bg-white text-black'
@@ -516,14 +819,56 @@ export default function BookAppointment() {
                                 ))}
                               </div>
                             ) : (
-                              <div className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">
-                                No available slots for this day. Please select another date.
+                              <div className="text-center text-gray-400 bg-gray-700 p-6 rounded-lg space-y-3">
+                                <p className="text-base font-semibold text-white">
+                                  No available slots for this day.
+                                </p>
+                                <p className="text-sm text-gray-300">
+                                  If you still want this date we can queue you for the first cancellation.
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  We will text you if someone cancels a slot on that day.
+                                </p>
+                              </div>
+                            )}
+
+                            {altSuggestions.length > 0 && (
+                              <div className="mt-6">
+                                <h4 className="text-white font-semibold mb-3">Suggested Alternatives</h4>
+                                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                                  {altSuggestions.map((time) => (
+                                    <button
+                                      key={`sugg-${time}`}
+                                      onClick={() => {
+                                        setFormData({ ...formData, time });
+                                        setAltSuggestions([]);
+                                        toast.success(`Selected ${time}`);
+                                      }}
+                                      className="p-2 lg:p-3 rounded-lg border-2 transition-all duration-300 text-center font-medium text-sm lg:text-base border-blue-400 bg-blue-900/30 text-white hover:bg-blue-900/50"
+                                    >
+                                      {time}
+                                    </button>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-gray-400 mt-2">These times fit your selected service length and the shop schedule.</p>
                               </div>
                             )}
 
                             <p className="text-sm text-gray-300">
-                              Don&apos;t see your preferred time? Call the shop at <span className="font-semibold">(365) 323-3680</span> and we&apos;ll try to fit you in.
+                              Don&apos;t see your preferred time? Join the Queue
                             </p>
+                            <div className="mt-6">
+                              <Button
+                                onClick={handleQueueRequest}
+                                className="w-full bg-white text-black hover:bg-gray-200"
+                                disabled={!formData.serviceId}
+                              >
+                                Join the queue for {formData.date ? moment(formData.date).format('MMMM D') : 'selected day'}
+                              </Button>
+                              <p className="text-xs text-gray-400 mt-1">
+                                We will text you if someone cancels a slot for this day
+                              </p>
+                            </div>
                           </div>
                         )
                       )}
@@ -604,6 +949,124 @@ export default function BookAppointment() {
                             />
                           </div>
 
+                          <div className="bg-gray-700 border border-gray-600 rounded-lg p-4 space-y-4">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <p className="text-white font-medium">Additional guests</p>
+                                <p className="text-sm text-gray-400">
+                                  Add as many guests as you like; each picks a service and time.
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={addGuestEntry}
+                                disabled={!canAddGuest}
+                              >
+                                Add guest
+                              </Button>
+                            </div>
+                            {!canAddGuest && guestEntries.length > 0 && (
+                              <p className="text-xs text-amber-300">
+                                Only one slot remains on this day, so no new guests can be added.
+                              </p>
+                            )}
+                            <div className="space-y-4">
+                              {guestEntries.map((guest, index) => (
+                                <div
+                                  key={`guest-${index}`}
+                                  className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-white font-medium">Guest {index + 1}</p>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => removeGuestEntry(index)}
+                                      className="text-gray-400"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div>
+                                      <Label className="text-white font-medium text-xs">First Name</Label>
+                                      <Input
+                                        value={guest.firstName}
+                                        onChange={(e) =>
+                                          updateGuestEntry(index, { firstName: e.target.value })
+                                        }
+                                        placeholder="First name"
+                                        className="mt-2 bg-gray-900 border-gray-600 text-white"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-white font-medium text-xs">Last Name</Label>
+                                      <Input
+                                        value={guest.lastName}
+                                        onChange={(e) =>
+                                          updateGuestEntry(index, { lastName: e.target.value })
+                                        }
+                                        placeholder="Last name"
+                                        className="mt-2 bg-gray-900 border-gray-600 text-white"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label className="text-white font-medium text-xs">Email (optional)</Label>
+                                    <Input
+                                      type="email"
+                                      value={guest.email}
+                                      onChange={(e) =>
+                                        updateGuestEntry(index, { email: e.target.value })
+                                      }
+                                      placeholder="Email address"
+                                      className="mt-2 bg-gray-900 border-gray-600 text-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-white font-medium text-xs">Service</Label>
+                                    <select
+                                      className="w-full bg-gray-900 border border-gray-600 rounded-lg text-white px-3 py-2 mt-2"
+                                      value={guest.serviceId}
+                                      onChange={(e) =>
+                                        updateGuestEntry(index, { serviceId: e.target.value })
+                                      }
+                                    >
+                                      <option value="">Select service</option>
+                                      {services.map((svc) => (
+                                        <option
+                                          key={`guest-${index}-svc-${svc._id}`}
+                                          value={svc._id}
+                                        >
+                                          {svc.name} • {svc.duration} mins
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <Label className="text-white font-medium text-xs">Time</Label>
+                                    <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                      {timeOptionsForGuest(guest.time).map((slot) => (
+                                        <button
+                                          key={`guest-${index}-time-${slot}`}
+                                          onClick={() => updateGuestEntry(index, { time: slot })}
+                                          className={`text-sm rounded-lg border-2 py-2 transition-all duration-200 ${
+                                            guest.time === slot
+                                              ? 'border-white bg-white text-black'
+                                              : 'border-gray-600 bg-gray-800 text-white hover:border-gray-400'
+                                          }`}
+                                        >
+                                          {slot}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
                           {/* Payment Option — make the ENTIRE card clickable */}
                           <div>
                             <Label className="text-white font-medium mb-4 block">Payment Option</Label>
@@ -615,32 +1078,34 @@ export default function BookAppointment() {
                               className="space-y-3"
                             >
                               {/* Pay at Appointment */}
-                              <div
-                                onClick={() => setFormData({ ...formData, paymentMethod: 'in-person' })}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    setFormData({ ...formData, paymentMethod: 'in-person' });
-                                  }
-                                }}
-                                role="button"
-                                tabIndex={0}
-                                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
-                                  formData.paymentMethod === 'in-person'
-                                    ? 'border-white bg-gray-700'
-                                    : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <RadioGroupItem
-                                    value="in-person"
-                                    id="in-person"
-                                  />
-                                  <Label htmlFor="in-person" className="text-white cursor-pointer">
-                                    Pay at Appointment
-                                  </Label>
+                              {!needsPrepay && (
+                                <div
+                                  onClick={() => setFormData({ ...formData, paymentMethod: 'in-person' })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      setFormData({ ...formData, paymentMethod: 'in-person' });
+                                    }
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
+                                    formData.paymentMethod === 'in-person'
+                                      ? 'border-white bg-gray-700'
+                                      : 'border-gray-600 bg-gray-800 hover:bg-gray-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <RadioGroupItem
+                                      value="in-person"
+                                      id="in-person"
+                                    />
+                                    <Label htmlFor="in-person" className="text-white cursor-pointer">
+                                      Pay at Appointment
+                                    </Label>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
                               {/* Pay Now */}
                               <div
@@ -671,6 +1136,34 @@ export default function BookAppointment() {
                               </div>
                             </RadioGroup>
                           </div>
+                          {needsPrepay && (
+                            <p className="text-xs text-amber-300 mt-2">
+                              You have multiple cancellations on record, so we now require the Pay Now option.
+                            </p>
+                          )}
+                          {queueRequestedDate && (
+                            <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4 space-y-3">
+                              <p className="text-sm text-blue-100">
+                                You asked to queue for {moment(queueRequestedDate).format('MMMM D')}.
+                              </p>
+                              <Button
+                                onClick={handleJoinQueue}
+                                className="w-full bg-white text-black hover:bg-gray-200"
+                                disabled={queueJoined || isJoiningQueue}
+                              >
+                                {queueJoined
+                                  ? 'Waiting for a slot to open'
+                                  : isJoiningQueue
+                                  ? 'Joining queue...'
+                                  : `Join queue for ${moment(queueRequestedDate).format('MMM D')}`}
+                              </Button>
+                              {queueJoined && (
+                                <p className="text-xs text-blue-200">
+                                  You will receive a text if a slot opens up and the booking is created automatically.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

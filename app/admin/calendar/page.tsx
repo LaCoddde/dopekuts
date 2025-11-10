@@ -1,26 +1,19 @@
 // app/admin/calendar/page.tsx
 'use client';
 
-import { useState, useEffect, FC } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Save, AlertCircle, CheckCircle2, XCircle, X } from 'lucide-react';
+import moment from 'moment';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { CalendarClock, Save, Clock, AlertCircle, CheckCircle2, XCircle, X } from 'lucide-react';
-import {
-  getCalendarSettings,
-  updateCalendarSettings,
-  ICalendarSettings,
+  getWeeklyCalendar,
+  updateWeeklyCalendar,
+  IWeeklyCalendar,
 } from '@/lib/api/calendar';
 
-// --- Custom Modal Component ---
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,38 +22,36 @@ interface ModalProps {
   isError?: boolean;
 }
 
-const ConfirmationModal: FC<ModalProps> = ({ isOpen, onClose, title, message, isError = false }) => {
+const ConfirmationModal = ({ isOpen, onClose, title, message, isError = false }: ModalProps) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
       <div className="relative w-full max-w-md p-6 mx-4 bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
         <div className="flex flex-col items-center text-center">
-            {isError ? (
-                <XCircle className="w-12 h-12 mb-4 text-red-500" />
-            ) : (
-                <CheckCircle2 className="w-12 h-12 mb-4 text-green-500" />
-            )}
-            <h3 className="text-xl font-bold text-white">{title}</h3>
-            <p className="mt-2 text-sm text-gray-300">{message}</p>
-            <Button
-                onClick={onClose}
-                className="w-full mt-6 bg-white text-black hover:bg-gray-200"
-            >
-                OK
-            </Button>
+          {isError ? (
+            <XCircle className="w-12 h-12 mb-4 text-red-500" />
+          ) : (
+            <CheckCircle2 className="w-12 h-12 mb-4 text-green-500" />
+          )}
+          <h3 className="text-xl font-bold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-gray-300">{message}</p>
+          <Button
+            onClick={onClose}
+            className="w-full mt-6 bg-white text-black hover:bg-gray-200"
+          >
+            OK
+          </Button>
         </div>
         <button
-            onClick={onClose}
-            className="absolute top-2 right-2 p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white"
+          onClick={onClose}
+          className="absolute top-2 right-2 p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white"
         >
-            <X className="w-5 h-5" />
+          <X className="w-5 h-5" />
         </button>
       </div>
     </div>
   );
 };
-
 
 const timeOptions = [
   '06:00', '06:30', '07:00', '07:30', '08:00', '08:30',
@@ -71,10 +62,10 @@ const timeOptions = [
   '21:00', '21:30', '22:00',
 ];
 
-const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DEFAULT_SLOT_DURATION = 30;
 
 export default function CalendarManagement() {
-  const [schedule, setSchedule] = useState<ICalendarSettings[]>([]);
+  const [weeks, setWeeks] = useState<IWeeklyCalendar[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [modalState, setModalState] = useState({
@@ -83,79 +74,88 @@ export default function CalendarManagement() {
     message: '',
     isError: false,
   });
+  const [weeksToShow, setWeeksToShow] = useState(4);
+  const [startDate, setStartDate] = useState(moment().startOf('isoWeek').format('YYYY-MM-DD'));
+  const [isSaving, setIsSaving] = useState(false);
+
+  const fetchWeeks = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getWeeklyCalendar(weeksToShow, startDate);
+      setWeeks(data);
+    } catch (err) {
+      console.error('Failed to fetch weekly schedule:', err);
+      setError('Failed to load schedule. Please try refreshing the page.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchSchedule = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const settings = await getCalendarSettings();
-        
-        const sortedSettings = settings.sort((a, b) => {
-          return dayOrder.indexOf(a.dayOfWeek) - dayOrder.indexOf(b.dayOfWeek);
-        });
+    fetchWeeks();
+  }, [weeksToShow, startDate]);
 
-        setSchedule(sortedSettings);
-      } catch (err) {
-        console.error('Failed to fetch calendar settings:', err);
-        setError('Failed to load schedule. Please try refreshing the page.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSchedule();
-  }, []);
-
-  const toggleDay = (index: number) => {
-    const newSchedule = [...schedule];
-    newSchedule[index].isEnabled = !newSchedule[index].isEnabled;
-    setSchedule(newSchedule);
+  const updateWeek = (index: number, updatedWeek: IWeeklyCalendar) => {
+    setWeeks((prev) => prev.map((week, idx) => (idx === index ? updatedWeek : week)));
   };
 
-  const updateStartTime = (index: number, time: string) => {
-    const newSchedule = [...schedule];
-    newSchedule[index].startTime = time;
-    setSchedule(newSchedule);
+  const updateDay = (weekIndex: number, dayIndex: number, dayChanges: Partial<IWeeklyCalendar['days'][0]>) => {
+    const updated = [...weeks];
+    const targetWeek = updated[weekIndex];
+    if (!targetWeek) return;
+    const days = [...targetWeek.days];
+    days[dayIndex] = { ...days[dayIndex], ...dayChanges };
+    updated[weekIndex] = { ...targetWeek, days };
+    setWeeks(updated);
   };
 
-  const updateEndTime = (index: number, time: string) => {
-    const newSchedule = [...schedule];
-    newSchedule[index].endTime = time;
-    setSchedule(newSchedule);
-  };
-  
-  const updateBreakStartTime = (index: number, time: string) => {
-    const newSchedule = [...schedule];
-    if (newSchedule[index].breaks.length === 0) {
-        const nextTimeSlot = timeOptions.find(option => option > time);
-        const breakEndTime = nextTimeSlot && nextTimeSlot < newSchedule[index].endTime ? nextTimeSlot : '';
-        newSchedule[index].breaks.push({ startTime: time, endTime: breakEndTime });
-    } else {
-      newSchedule[index].breaks[0].startTime = time;
-      if (time >= newSchedule[index].breaks[0].endTime) {
-        const nextTimeSlot = timeOptions.find(option => option > time);
-        if (nextTimeSlot && nextTimeSlot < newSchedule[index].endTime) {
-          newSchedule[index].breaks[0].endTime = nextTimeSlot;
-        } else {
-          newSchedule[index].breaks[0].endTime = ''; 
-        }
-      }
-    }
-    setSchedule(newSchedule);
+  const addBlockedTime = (weekIndex: number, dayIndex: number) => {
+    const updated = [...weeks];
+    const targetWeek = updated[weekIndex];
+    if (!targetWeek) return;
+    const days = [...targetWeek.days];
+    const day = days[dayIndex];
+    const blockedTimes = [...day.blockedTimes, { startTime: day.startTime, endTime: day.startTime }];
+    days[dayIndex] = { ...day, blockedTimes };
+    updated[weekIndex] = { ...targetWeek, days };
+    setWeeks(updated);
   };
 
-  const updateBreakEndTime = (index: number, time: string) => {
-    const newSchedule = [...schedule];
-    if (newSchedule[index].breaks.length > 0) {
-      newSchedule[index].breaks[0].endTime = time;
-    }
-    setSchedule(newSchedule);
+  const updateBlockedTime = (
+    weekIndex: number,
+    dayIndex: number,
+    blockedIndex: number,
+    field: 'startTime' | 'endTime',
+    value: string
+  ) => {
+    const updated = [...weeks];
+    const targetWeek = updated[weekIndex];
+    if (!targetWeek) return;
+    const days = [...targetWeek.days];
+    const blockedTimes = [...days[dayIndex].blockedTimes];
+    blockedTimes[blockedIndex] = { ...blockedTimes[blockedIndex], [field]: value };
+    days[dayIndex] = { ...days[dayIndex], blockedTimes };
+    updated[weekIndex] = { ...targetWeek, days };
+    setWeeks(updated);
+  };
+
+  const removeBlockedTime = (weekIndex: number, dayIndex: number, blockedIndex: number) => {
+    const updated = [...weeks];
+    const targetWeek = updated[weekIndex];
+    if (!targetWeek) return;
+    const days = [...targetWeek.days];
+    const blockedTimes = [...days[dayIndex].blockedTimes];
+    blockedTimes.splice(blockedIndex, 1);
+    days[dayIndex] = { ...days[dayIndex], blockedTimes };
+    updated[weekIndex] = { ...targetWeek, days };
+    setWeeks(updated);
   };
 
   const handleSave = async () => {
+    setIsSaving(true);
     try {
-      await updateCalendarSettings(schedule);
+      await updateWeeklyCalendar(weeks);
       setModalState({
         isOpen: true,
         title: 'Schedule Updated',
@@ -170,9 +170,11 @@ export default function CalendarManagement() {
         message: 'We could not save your schedule. Please check your connection and try again.',
         isError: true,
       });
+    } finally {
+      setIsSaving(false);
     }
   };
-  
+
   const closeModal = () => setModalState({ isOpen: false, title: '', message: '', isError: false });
 
   if (loading) {
@@ -204,211 +206,204 @@ export default function CalendarManagement() {
       />
       <div className="space-y-4 md:space-y-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-            Calendar Management
-          </h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Calendar Management</h1>
           <p className="text-sm md:text-base text-gray-400">
-            Set your weekly availability schedule
+            Configure availability per week and block any specific slots.
           </p>
         </div>
 
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <CalendarClock className="h-5 w-5" />
-              Weekly Availability
-            </CardTitle>
-            <CardDescription className="text-gray-300">
-              Configure the days and hours you are available for appointments
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-4">
-              {schedule.map((daySchedule, index) => {
-                const breakStartTimeOptions = timeOptions.filter(
-                  (time) => time > daySchedule.startTime && time < daySchedule.endTime
-                );
-                const breakEndTimeOptions = timeOptions.filter(
-                  (time) => time > (daySchedule.breaks[0]?.startTime || '') && time <= daySchedule.endTime
-                );
-                
-                return (
-                  <div
-                    key={daySchedule.dayOfWeek}
-                    className={`p-4 rounded-lg border transition-all duration-300 ${
-                      daySchedule.isEnabled
-                        ? 'bg-gray-750 border-gray-600'
-                        : 'bg-gray-800 border-gray-700 opacity-60'
-                    }`}
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              <div>
+                <CardTitle className="text-white">Weekly Availability</CardTitle>
+                <CardDescription className="text-gray-300">
+                  Edit start/end times per day, and add as many blocked periods as needed.
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-3 items-center">
+                <div>
+                  <Label className="text-xs text-gray-400 uppercase tracking-wide">Week start</Label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-400 uppercase tracking-wide">Weeks shown</Label>
+                  <select
+                    value={weeksToShow}
+                    onChange={(e) => setWeeksToShow(Number(e.target.value))}
+                    className="mt-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
                   >
-                    <div className="flex flex-col gap-4">
+                    {[1, 2, 3, 4].map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button variant="outline" onClick={fetchWeeks} className="bg-white text-black hover:bg-gray-200">
+                  Refresh
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  className="bg-white text-black hover:bg-gray-200"
+                  disabled={isSaving}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {weeks.map((week, weekIndex) => (
+              <div key={week.weekStart} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">Week starting</p>
+                    <input
+                      type="date"
+                      value={week.weekStart}
+                      onChange={(e) => updateWeek(weekIndex, { ...week, weekStart: e.target.value })}
+                      className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                  <p className="text-sm text-white font-semibold">{moment(week.weekStart).format('MMMM D, YYYY')}</p>
+                </div>
+                <div className="grid gap-3">
+                  {week.days.map((day, dayIndex) => (
+                    <div
+                      key={`${week.weekStart}-${day.dayOfWeek}`}
+                      className={`rounded-xl p-3 space-y-3 border transition ${
+                        day.isEnabled
+                          ? 'bg-gray-800 border-gray-700'
+                          : 'bg-red-950 border-red-600/60 opacity-80'
+                      }`}
+                    >
                       <div className="flex items-center justify-between">
-                        <Label
-                          htmlFor={`toggle-${daySchedule.dayOfWeek}`}
-                          className="text-white text-base md:text-lg font-semibold cursor-pointer"
-                        >
-                          {daySchedule.dayOfWeek}
-                        </Label>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-400">
-                            {daySchedule.isEnabled ? 'Available' : 'Closed'}
-                          </span>
+                        <p className="text-sm font-semibold text-white">{day.dayOfWeek}</p>
+                        <div className="flex items-center gap-2">
+                          {!day.isEnabled && (
+                            <span className="text-xs text-amber-200 uppercase tracking-wide">hidden</span>
+                          )}
                           <Switch
-                            id={`toggle-${daySchedule.dayOfWeek}`}
-                            checked={daySchedule.isEnabled}
-                            onCheckedChange={() => toggleDay(index)}
+                            checked={day.isEnabled}
+                            onCheckedChange={(checked) => updateDay(weekIndex, dayIndex, { isEnabled: checked })}
                           />
                         </div>
                       </div>
-
-                      {daySchedule.isEnabled && (
-                        <div className="space-y-4">
-                          {/* Working Hours */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label className="text-gray-300 text-sm flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                Start Time
-                              </Label>
-                              <Select
-                                value={daySchedule.startTime}
-                                onValueChange={(value) => updateStartTime(index, value)}
-                              >
-                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                  {timeOptions.map((time) => (
-                                    <SelectItem key={`start-${time}`} value={time} className="text-white">
-                                      {time}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-gray-300 text-sm flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                End Time
-                              </Label>
-                              <Select
-                                value={daySchedule.endTime}
-                                onValueChange={(value) => updateEndTime(index, value)}
-                              >
-                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                  {timeOptions.map((time) => (
-                                    <SelectItem key={`end-${time}`} value={time} className="text-white">
-                                      {time}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          {/* Break Times */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-600/50">
-                              <div className="space-y-2">
-                              <Label className="text-gray-300 text-sm flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                Break Start
-                              </Label>
-                              <Select
-                                value={daySchedule.breaks[0]?.startTime}
-                                onValueChange={(value) => updateBreakStartTime(index, value)}
-                              >
-                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                  <SelectValue placeholder="No break" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                  {breakStartTimeOptions.map((time) => (
-                                    <SelectItem key={`break-start-${time}`} value={time} className="text-white">
-                                      {time}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-gray-300 text-sm flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                Break End
-                              </Label>
-                              <Select
-                                value={daySchedule.breaks[0]?.endTime}
-                                onValueChange={(value) => updateBreakEndTime(index, value)}
-                                disabled={!daySchedule.breaks[0]?.startTime}
-                              >
-                                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                                  <SelectValue placeholder="No break" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-700 border-gray-600 max-h-[200px]">
-                                  {breakEndTimeOptions.map((time) => (
-                                    <SelectItem key={`break-end-${time}`} value={time} className="text-white">
-                                      {time}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <div>
+                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Start Time</Label>
+                          <select
+                            value={day.startTime}
+                            onChange={(e) => updateDay(weekIndex, dayIndex, { startTime: e.target.value })}
+                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                          >
+                            {timeOptions.map((option) => (
+                              <option key={`start-${week.weekStart}-${day.dayOfWeek}-${option}`} value={option}>
+                                {moment(option, 'HH:mm').format('hh:mm A')}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      )}
+                        <div>
+                          <Label className="text-xs text-gray-400 uppercase tracking-wide">End Time</Label>
+                          <select
+                            value={day.endTime}
+                            onChange={(e) => updateDay(weekIndex, dayIndex, { endTime: e.target.value })}
+                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                          >
+                            {timeOptions.map((option) => (
+                              <option key={`end-${week.weekStart}-${day.dayOfWeek}-${option}`} value={option}>
+                                {moment(option, 'HH:mm').format('hh:mm A')}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Slot Duration</Label>
+                          <input
+                            type="number"
+                            min={10}
+                            max={180}
+                            value={day.slotDuration}
+                            onChange={(e) =>
+                              updateDay(weekIndex, dayIndex, {
+                                slotDuration: Number(e.target.value) || DEFAULT_SLOT_DURATION,
+                              })
+                            }
+                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Enabled</Label>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-gray-400 uppercase tracking-wide">Blocked Times</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addBlockedTime(weekIndex, dayIndex)}
+                            disabled={!day.isEnabled}
+                          >
+                            Add block
+                          </Button>
+                        </div>
+                        {day.blockedTimes.map((block, blockedIndex) => (
+                          <div
+                            key={`${week.weekStart}-${day.dayOfWeek}-blocked-${blockedIndex}`}
+                            className="flex flex-wrap gap-2 items-center"
+                          >
+                            <select
+                              value={block.startTime}
+                              onChange={(e) =>
+                                updateBlockedTime(weekIndex, dayIndex, blockedIndex, 'startTime', e.target.value)
+                              }
+                              className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                            >
+                              {timeOptions.map((option) => (
+                                <option key={`block-start-${blockedIndex}-${option}`} value={option}>
+                                  {moment(option, 'HH:mm').format('hh:mm A')}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={block.endTime}
+                              onChange={(e) =>
+                                updateBlockedTime(weekIndex, dayIndex, blockedIndex, 'endTime', e.target.value)
+                              }
+                              className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                            >
+                              {timeOptions.map((option) => (
+                                <option key={`block-end-${blockedIndex}-${option}`} value={option}>
+                                  {moment(option, 'HH:mm').format('hh:mm A')}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeBlockedTime(weekIndex, dayIndex, blockedIndex)}
+                              className="text-gray-400"
+                            >
+                              <X className="h-4 w-4" />
+                              <span className="sr-only">Remove blocked time</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="pt-4">
-              <Button
-                onClick={handleSave}
-                className="w-full bg-white text-black hover:bg-gray-200"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Availability Schedule
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader>
-            <CardTitle className="text-white">Schedule Summary</CardTitle>
-            <CardDescription className="text-gray-300">
-              Your current weekly schedule
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {schedule.map((daySchedule) => (
-                <div
-                  key={daySchedule.dayOfWeek}
-                  className="flex items-start justify-between py-3 border-b border-gray-700 last:border-0"
-                >
-                  <span className="text-white font-medium">{daySchedule.dayOfWeek}</span>
-                  <div className="text-right">
-                      {daySchedule.isEnabled ? (
-                          <>
-                              <span className="text-gray-300 block">
-                                  {`${daySchedule.startTime} - ${daySchedule.endTime}`}
-                              </span>
-                              {daySchedule.breaks.length > 0 && daySchedule.breaks[0].startTime && (
-                                  <span className="text-xs text-gray-400 block">
-                                      {`Break: ${daySchedule.breaks[0].startTime} - ${daySchedule.breaks[0].endTime}`}
-                                  </span>
-                              )}
-                          </>
-                      ) : (
-                          <span className="text-gray-400">Closed</span>
-                      )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>

@@ -17,8 +17,8 @@ const emptyProduct = {
   description: '',
   price: 0,
   link: '',
-  affiliateLink: '', // <-- Added affiliate link
-  image: 'https://images.pexels.com/photos/1570807/pexels-photo-1570807.jpeg?auto=compress&cs=tinysrgb&w=400',
+  affiliateLink: '',
+  image: '',
 };
 
 export default function Products() {
@@ -75,12 +75,17 @@ export default function Products() {
   const handleSaveProduct = async () => {
     if (!currentProduct) return;
 
+    const normalizedProduct = {
+      ...currentProduct,
+      link: currentProduct.affiliateLink || currentProduct.link || '',
+    };
+
     const formData = new FormData();
-    // Append all fields from currentProduct to FormData, skipping the ID
-    Object.keys(currentProduct).forEach(key => {
-        if (key !== '_id' && currentProduct[key as keyof typeof currentProduct] !== null) {
-            formData.append(key, currentProduct[key as keyof typeof currentProduct] as string | Blob);
-        }
+    Object.entries(normalizedProduct).forEach(([key, value]) => {
+      if (key === '_id' || value === null || value === undefined) return;
+      const payloadValue =
+        typeof value === 'number' ? value.toString() : (value as string | Blob);
+      formData.append(key, payloadValue);
     });
 
     try {
@@ -229,10 +234,6 @@ export default function Products() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="price" className="text-right">Price</Label>
                 <Input id="price" type="number" value={currentProduct.price} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="link" className="text-right">Link</Label>
-                <Input id="link" value={currentProduct.link} onChange={handleInputChange} className="col-span-3 bg-gray-700 border-gray-600" />
               </div>
               {/* <-- Input for Affiliate Link added --> */}
               <div className="grid grid-cols-4 items-center gap-4">
