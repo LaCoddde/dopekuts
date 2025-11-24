@@ -7,8 +7,11 @@ export interface NotificationSettings {
   emailEnabled: boolean;
   smsEnabled: boolean;
   autoSendBookingConfirmations: boolean;
+  timezone: string;
   createdAt: string;
   updatedAt: string;
+  siteNoticeEnabled: boolean;
+  siteNoticeMessage: string;
 }
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
@@ -17,11 +20,21 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
 }
 
 export async function updateNotificationSettings(
-  payload: Partial<Pick<NotificationSettings, 'emailEnabled' | 'smsEnabled' | 'autoSendBookingConfirmations'>>
+  payload: Partial<Pick<NotificationSettings, 'emailEnabled' | 'smsEnabled' | 'autoSendBookingConfirmations' | 'timezone' | 'siteNoticeEnabled' | 'siteNoticeMessage'>>
 ): Promise<{ message: string; settings: NotificationSettings }> {
   const { data } = await apiClient.put<{ message: string; settings: NotificationSettings }>(
     '/notifications/settings',
     payload
   );
+  return data;
+}
+
+export interface SiteNotice {
+  enabled: boolean;
+  message: string;
+}
+
+export async function getSiteNotice(): Promise<SiteNotice> {
+  const { data } = await apiClient.get<SiteNotice>('/notifications/notice');
   return data;
 }

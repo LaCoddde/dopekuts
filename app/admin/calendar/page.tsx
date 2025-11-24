@@ -1,18 +1,19 @@
 // app/admin/calendar/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Save, AlertCircle, CheckCircle2, XCircle, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, XCircle, X } from 'lucide-react';
 import moment from 'moment';
 import {
   getWeeklyCalendar,
   updateWeeklyCalendar,
   IWeeklyCalendar,
 } from '@/lib/api/calendar';
+import { toast } from 'sonner';
 
 interface ModalProps {
   isOpen: boolean;
@@ -62,10 +63,13 @@ const timeOptions = [
   '21:00', '21:30', '22:00',
 ];
 
-const DEFAULT_SLOT_DURATION = 30;
+const DEFAULT_SLOT_DURATION = 35;
+const STORAGE_START = 'admin-calendar-start';
+const STORAGE_WEEKS = 'admin-calendar-weeks';
 
 export default function CalendarManagement() {
   const [weeks, setWeeks] = useState<IWeeklyCalendar[]>([]);
+  const weeksRef = useRef<IWeeklyCalendar[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [modalState, setModalState] = useState({
@@ -77,6 +81,49 @@ export default function CalendarManagement() {
   const [weeksToShow, setWeeksToShow] = useState(4);
   const [startDate, setStartDate] = useState(moment().startOf('isoWeek').format('YYYY-MM-DD'));
   const [isSaving, setIsSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const autoSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+
+  useEffect(() => {
+    weeksRef.current = weeks;
+  }, [weeks]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedStart = window.localStorage.getItem(STORAGE_START);
+    const storedWeeks = window.localStorage.getItem(STORAGE_WEEKS);
+    if (storedStart) setStartDate(storedStart);
+    const parsedWeeks = storedWeeks ? parseInt(storedWeeks, 10) : NaN;
+    if (!Number.isNaN(parsedWeeks) && parsedWeeks > 0) {
+      setWeeksToShow(parsedWeeks);
+    }
+
+    const handleExternalUpdate = (event: StorageEvent) => {
+      if (event.key === STORAGE_START && event.newValue) {
+        setStartDate(event.newValue);
+      }
+      if (event.key === STORAGE_WEEKS && event.newValue) {
+        const n = parseInt(event.newValue, 10);
+        if (!Number.isNaN(n) && n > 0) setWeeksToShow(n);
+      }
+    };
+
+    const handleCustomUpdate = (event: Event) => {
+      if (event instanceof CustomEvent) {
+        const detail = (event as CustomEvent<any>).detail || {};
+        if (detail.startDate) setStartDate(detail.startDate);
+        if (detail.weeksToShow) setWeeksToShow(detail.weeksToShow);
+      }
+    };
+
+    window.addEventListener('storage', handleExternalUpdate);
+    window.addEventListener('calendar-settings-changed', handleCustomUpdate);
+    return () => {
+      window.removeEventListener('storage', handleExternalUpdate);
+      window.removeEventListener('calendar-settings-changed', handleCustomUpdate);
+    };
+  }, []);
 
   const fetchWeeks = async () => {
     try {
@@ -84,6 +131,12 @@ export default function CalendarManagement() {
       setError(null);
       const data = await getWeeklyCalendar(weeksToShow, startDate);
       setWeeks(data);
+      setSelectedWeekIdx(0);
+      setDirty(false);
+      if (autoSaveTimeout.current) {
+        clearTimeout(autoSaveTimeout.current);
+        autoSaveTimeout.current = null;
+      }
     } catch (err) {
       console.error('Failed to fetch weekly schedule:', err);
       setError('Failed to load schedule. Please try refreshing the page.');
@@ -93,14 +146,43 @@ export default function CalendarManagement() {
   };
 
   useEffect(() => {
-    fetchWeeks();
+    void fetchWeeks();
   }, [weeksToShow, startDate]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeout.current) {
+        clearTimeout(autoSaveTimeout.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedWeekIdx >= weeks.length) {
+      setSelectedWeekIdx(Math.max(0, weeks.length - 1));
+    }
+  }, [weeks.length, selectedWeekIdx]);
+
+  const scheduleAutoSave = () => {
+    if (autoSaveTimeout.current) {
+      clearTimeout(autoSaveTimeout.current);
+    }
+    autoSaveTimeout.current = setTimeout(() => {
+      void handleSave(true);
+    }, 800);
+  };
 
   const updateWeek = (index: number, updatedWeek: IWeeklyCalendar) => {
     setWeeks((prev) => prev.map((week, idx) => (idx === index ? updatedWeek : week)));
+    setDirty(true);
+    scheduleAutoSave();
   };
 
-  const updateDay = (weekIndex: number, dayIndex: number, dayChanges: Partial<IWeeklyCalendar['days'][0]>) => {
+  const updateDay = (
+    weekIndex: number,
+    dayIndex: number,
+    dayChanges: Partial<IWeeklyCalendar['days'][0]>
+  ) => {
     const updated = [...weeks];
     const targetWeek = updated[weekIndex];
     if (!targetWeek) return;
@@ -108,6 +190,8 @@ export default function CalendarManagement() {
     days[dayIndex] = { ...days[dayIndex], ...dayChanges };
     updated[weekIndex] = { ...targetWeek, days };
     setWeeks(updated);
+    setDirty(true);
+    scheduleAutoSave();
   };
 
   const addBlockedTime = (weekIndex: number, dayIndex: number) => {
@@ -120,6 +204,8 @@ export default function CalendarManagement() {
     days[dayIndex] = { ...day, blockedTimes };
     updated[weekIndex] = { ...targetWeek, days };
     setWeeks(updated);
+    setDirty(true);
+    scheduleAutoSave();
   };
 
   const updateBlockedTime = (
@@ -138,6 +224,8 @@ export default function CalendarManagement() {
     days[dayIndex] = { ...days[dayIndex], blockedTimes };
     updated[weekIndex] = { ...targetWeek, days };
     setWeeks(updated);
+    setDirty(true);
+    scheduleAutoSave();
   };
 
   const removeBlockedTime = (weekIndex: number, dayIndex: number, blockedIndex: number) => {
@@ -150,30 +238,56 @@ export default function CalendarManagement() {
     days[dayIndex] = { ...days[dayIndex], blockedTimes };
     updated[weekIndex] = { ...targetWeek, days };
     setWeeks(updated);
+    setDirty(true);
+    scheduleAutoSave();
   };
 
-  const handleSave = async () => {
+  async function handleSave(isAuto = false) {
+    if (autoSaveTimeout.current) {
+      clearTimeout(autoSaveTimeout.current);
+      autoSaveTimeout.current = null;
+    }
+
+    if (isAuto && isSaving) {
+      autoSaveTimeout.current = setTimeout(() => {
+        autoSaveTimeout.current = null;
+        void handleSave(true);
+      }, 500);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await updateWeeklyCalendar(weeks);
-      setModalState({
-        isOpen: true,
-        title: 'Schedule Updated',
-        message: 'Your new availability has been saved successfully.',
-        isError: false,
-      });
+      const payload = weeksRef.current;
+      await updateWeeklyCalendar(payload);
+      setDirty(false);
+      if (isAuto) {
+        toast.success('Availability auto-saved.');
+      } else {
+        toast.success('Schedule updated.');
+        setModalState({
+          isOpen: true,
+          title: 'Schedule Updated',
+          message: 'Your new availability has been saved successfully.',
+          isError: false,
+        });
+      }
     } catch (err) {
       console.error('Failed to save schedule:', err);
-      setModalState({
-        isOpen: true,
-        title: 'Update Failed',
-        message: 'We could not save your schedule. Please check your connection and try again.',
-        isError: true,
-      });
+      if (isAuto) {
+        toast.error('Auto-save failed. Click Save to retry.');
+      } else {
+        setModalState({
+          isOpen: true,
+          title: 'Update Failed',
+          message: 'We could not save your schedule. Please check your connection and try again.',
+          isError: true,
+        });
+      }
     } finally {
       setIsSaving(false);
     }
-  };
+  }
 
   const closeModal = () => setModalState({ isOpen: false, title: '', message: '', isError: false });
 
@@ -208,202 +322,233 @@ export default function CalendarManagement() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Calendar Management</h1>
           <p className="text-sm md:text-base text-gray-400">
-            Configure availability per week and block any specific slots.
+            Configure availability per week and block any specific slots. Changes auto-save.
           </p>
         </div>
 
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader>
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-              <div>
-                <CardTitle className="text-white">Weekly Availability</CardTitle>
-                <CardDescription className="text-gray-300">
-                  Edit start/end times per day, and add as many blocked periods as needed.
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-3 items-center">
-                <div>
-                  <Label className="text-xs text-gray-400 uppercase tracking-wide">Week start</Label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="mt-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-400 uppercase tracking-wide">Weeks shown</Label>
-                  <select
-                    value={weeksToShow}
-                    onChange={(e) => setWeeksToShow(Number(e.target.value))}
-                    className="mt-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-                  >
-                    {[1, 2, 3, 4].map((count) => (
-                      <option key={count} value={count}>
-                        {count}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button variant="outline" onClick={fetchWeeks} className="bg-white text-black hover:bg-gray-200">
-                  Refresh
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  className="bg-white text-black hover:bg-gray-200"
-                  disabled={isSaving}
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </div>
+            <div className="flex flex-col gap-1">
+              <CardTitle className="text-white">Weekly Availability</CardTitle>
+              <CardDescription className="text-gray-300">
+                Edit start/end times per day, add blocked periods as needed. Auto-saving is enabled.
+              </CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {weeks.map((week, weekIndex) => (
-              <div key={week.weekStart} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Week starting</p>
-                    <input
-                      type="date"
-                      value={week.weekStart}
-                      onChange={(e) => updateWeek(weekIndex, { ...week, weekStart: e.target.value })}
-                      className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-                    />
-                  </div>
-                  <p className="text-sm text-white font-semibold">{moment(week.weekStart).format('MMMM D, YYYY')}</p>
-                </div>
-                <div className="grid gap-3">
-                  {week.days.map((day, dayIndex) => (
-                    <div
-                      key={`${week.weekStart}-${day.dayOfWeek}`}
-                      className={`rounded-xl p-3 space-y-3 border transition ${
-                        day.isEnabled
-                          ? 'bg-gray-800 border-gray-700'
-                          : 'bg-red-950 border-red-600/60 opacity-80'
+            {weeks.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {weeks.map((week, idx) => {
+                  const isActive = idx === selectedWeekIdx;
+                  return (
+                    <button
+                      key={week.weekStart}
+                      onClick={() => setSelectedWeekIdx(idx)}
+                      className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm transition ${
+                        isActive
+                          ? 'bg-white text-black border-white'
+                          : 'bg-gray-900 text-gray-200 border-gray-700 hover:border-gray-500'
                       }`}
+                      aria-pressed={isActive}
                     >
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-white">{day.dayOfWeek}</p>
-                        <div className="flex items-center gap-2">
-                          {!day.isEnabled && (
-                            <span className="text-xs text-amber-200 uppercase tracking-wide">hidden</span>
-                          )}
-                          <Switch
-                            checked={day.isEnabled}
-                            onCheckedChange={(checked) => updateDay(weekIndex, dayIndex, { isEnabled: checked })}
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <div>
-                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Start Time</Label>
-                          <select
-                            value={day.startTime}
-                            onChange={(e) => updateDay(weekIndex, dayIndex, { startTime: e.target.value })}
-                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
-                          >
-                            {timeOptions.map((option) => (
-                              <option key={`start-${week.weekStart}-${day.dayOfWeek}-${option}`} value={option}>
-                                {moment(option, 'HH:mm').format('hh:mm A')}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-gray-400 uppercase tracking-wide">End Time</Label>
-                          <select
-                            value={day.endTime}
-                            onChange={(e) => updateDay(weekIndex, dayIndex, { endTime: e.target.value })}
-                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
-                          >
-                            {timeOptions.map((option) => (
-                              <option key={`end-${week.weekStart}-${day.dayOfWeek}-${option}`} value={option}>
-                                {moment(option, 'HH:mm').format('hh:mm A')}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Slot Duration</Label>
-                          <input
-                            type="number"
-                            min={10}
-                            max={180}
-                            value={day.slotDuration}
-                            onChange={(e) =>
-                              updateDay(weekIndex, dayIndex, {
-                                slotDuration: Number(e.target.value) || DEFAULT_SLOT_DURATION,
-                              })
-                            }
-                            className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
-                          />
-                        </div>
-                        <div className="flex items-end">
-                          <Label className="text-xs text-gray-400 uppercase tracking-wide">Enabled</Label>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
+                      Week of {moment(week.weekStart).format('MMM D')}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {weeks
+              .filter((_, idx) => idx === selectedWeekIdx)
+              .map((week, weekIndex) => (
+                <div
+                  key={week.weekStart}
+                  className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Week starting</p>
+                      <input
+                        type="date"
+                        value={week.weekStart}
+                        onChange={(e) => updateWeek(weekIndex, { ...week, weekStart: e.target.value })}
+                        className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                      />
+                    </div>
+                    <p className="text-sm text-white font-semibold">
+                      {moment(week.weekStart).format('MMMM D, YYYY')}
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    {week.days.map((day, dayIndex) => (
+                      <div
+                        key={`${week.weekStart}-${day.dayOfWeek}`}
+                        className={`rounded-xl p-3 space-y-3 border transition ${
+                          day.isEnabled
+                            ? 'bg-gray-800 border-gray-700'
+                            : 'bg-red-950 border-red-600/60 opacity-80'
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-400 uppercase tracking-wide">Blocked Times</p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addBlockedTime(weekIndex, dayIndex)}
-                            disabled={!day.isEnabled}
-                          >
-                            Add block
-                          </Button>
+                          <p className="text-sm font-semibold text-white">{day.dayOfWeek}</p>
+                          <div className="flex items-center gap-2">
+                            {!day.isEnabled && (
+                              <span className="text-xs text-amber-200 uppercase tracking-wide">hidden</span>
+                            )}
+                            <Switch
+                              checked={day.isEnabled}
+                              onCheckedChange={(checked) =>
+                                updateDay(weekIndex, dayIndex, { isEnabled: checked })
+                              }
+                            />
+                          </div>
                         </div>
-                        {day.blockedTimes.map((block, blockedIndex) => (
-                          <div
-                            key={`${week.weekStart}-${day.dayOfWeek}-blocked-${blockedIndex}`}
-                            className="flex flex-wrap gap-2 items-center"
-                          >
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                          <div>
+                            <Label className="text-xs text-gray-400 uppercase tracking-wide">
+                              Start Time
+                            </Label>
                             <select
-                              value={block.startTime}
+                              value={day.startTime}
                               onChange={(e) =>
-                                updateBlockedTime(weekIndex, dayIndex, blockedIndex, 'startTime', e.target.value)
+                                updateDay(weekIndex, dayIndex, { startTime: e.target.value })
                               }
-                              className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                              className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
                             >
                               {timeOptions.map((option) => (
-                                <option key={`block-start-${blockedIndex}-${option}`} value={option}>
+                                <option
+                                  key={`start-${week.weekStart}-${day.dayOfWeek}-${option}`}
+                                  value={option}
+                                >
                                   {moment(option, 'HH:mm').format('hh:mm A')}
                                 </option>
                               ))}
                             </select>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-400 uppercase tracking-wide">
+                              End Time
+                            </Label>
                             <select
-                              value={block.endTime}
+                              value={day.endTime}
                               onChange={(e) =>
-                                updateBlockedTime(weekIndex, dayIndex, blockedIndex, 'endTime', e.target.value)
+                                updateDay(weekIndex, dayIndex, { endTime: e.target.value })
                               }
-                              className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                              className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
                             >
                               {timeOptions.map((option) => (
-                                <option key={`block-end-${blockedIndex}-${option}`} value={option}>
+                                <option
+                                  key={`end-${week.weekStart}-${day.dayOfWeek}-${option}`}
+                                  value={option}
+                                >
                                   {moment(option, 'HH:mm').format('hh:mm A')}
                                 </option>
                               ))}
                             </select>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-400 uppercase tracking-wide">
+                              Slot Duration
+                            </Label>
+                            <input
+                              type="number"
+                              min={10}
+                              max={180}
+                              value={day.slotDuration}
+                              onChange={(e) =>
+                                updateDay(weekIndex, dayIndex, {
+                                  slotDuration: Number(e.target.value) || DEFAULT_SLOT_DURATION,
+                                })
+                              }
+                              className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <Label className="text-xs text-gray-400 uppercase tracking-wide">
+                              Enabled
+                            </Label>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-gray-400 uppercase tracking-wide">Blocked Times</p>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              onClick={() => removeBlockedTime(weekIndex, dayIndex, blockedIndex)}
-                              className="text-gray-400"
+                              variant="outline"
+                              onClick={() => addBlockedTime(weekIndex, dayIndex)}
+                              disabled={!day.isEnabled}
                             >
-                              <X className="h-4 w-4" />
-                              <span className="sr-only">Remove blocked time</span>
+                              Add block
                             </Button>
                           </div>
-                        ))}
+                          {day.blockedTimes.map((block, blockedIndex) => (
+                            <div
+                              key={`${week.weekStart}-${day.dayOfWeek}-blocked-${blockedIndex}`}
+                              className="flex flex-wrap gap-2 items-center"
+                            >
+                              <select
+                                value={block.startTime}
+                                onChange={(e) =>
+                                  updateBlockedTime(
+                                    weekIndex,
+                                    dayIndex,
+                                    blockedIndex,
+                                    'startTime',
+                                    e.target.value,
+                                  )
+                                }
+                                className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                              >
+                                {timeOptions.map((option) => (
+                                  <option
+                                    key={`block-start-${blockedIndex}-${option}`}
+                                    value={option}
+                                  >
+                                    {moment(option, 'HH:mm').format('hh:mm A')}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={block.endTime}
+                                onChange={(e) =>
+                                  updateBlockedTime(
+                                    weekIndex,
+                                    dayIndex,
+                                    blockedIndex,
+                                    'endTime',
+                                    e.target.value,
+                                  )
+                                }
+                                className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white"
+                              >
+                                {timeOptions.map((option) => (
+                                  <option
+                                    key={`block-end-${blockedIndex}-${option}`}
+                                    value={option}
+                                  >
+                                    {moment(option, 'HH:mm').format('hh:mm A')}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  removeBlockedTime(weekIndex, dayIndex, blockedIndex)
+                                }
+                                className="text-gray-400"
+                              >
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">Remove blocked time</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </CardContent>
         </Card>
       </div>

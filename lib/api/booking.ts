@@ -352,6 +352,18 @@ export async function getAllBookings(): Promise<IBooking[]> {
 }
 
 /**
+ * Send a custom message (SMS) to a booking's phone.
+ * @access Private (Admin only)
+ */
+export async function sendBookingMessage(
+  id: string,
+  message: string
+): Promise<{ message: string }> {
+  const response = await apiClient.post<{ message: string }>(`/bookings/${id}/message`, { message });
+  return response.data;
+}
+
+/**
  * Confirm payment for a booking and change its status from 'pending' to 'confirmed'.
  * @access Private (Admin only)
  */

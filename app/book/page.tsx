@@ -1,7 +1,7 @@
 // dopecut/dopekuts-main/app/book/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type React from 'react';
 import { useSearchParams } from 'next/navigation';
 import PhoneInput from 'react-phone-number-input';
@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import toast from 'react-hot-toast';
 
 // --- API Imports ---
@@ -28,6 +28,7 @@ import { getAllServices, IService } from '@/lib/api/service';
 import {
   getCalendarSettings,
   getWeeklyCalendar,
+  getCalendarTimezone,
   getAvailability,
   ICalendarSettings,
   IWeeklyCalendar,
@@ -59,11 +60,17 @@ interface GuestEntry {
   time: string;
 }
 
-function findWeeklyDay(date: string, weeks: IWeeklyCalendar[]): IWeeklyCalendar['days'][0] | null {
-  const weekStart = moment(date, 'YYYY-MM-DD').startOf('isoWeek').format('YYYY-MM-DD');
+function findWeeklyDay(
+  date: string,
+  weeks: IWeeklyCalendar[],
+  timezone?: string
+): IWeeklyCalendar['days'][0] | null {
+  const zone = timezone && moment.tz.zone(timezone) ? timezone : undefined;
+  const m = zone ? moment.tz(date, 'YYYY-MM-DD', zone) : moment(date, 'YYYY-MM-DD');
+  const weekStart = m.clone().startOf('isoWeek').format('YYYY-MM-DD');
   const week = weeks.find((w) => w.weekStart === weekStart);
   if (!week) return null;
-  const dayOfWeek = moment(date, 'YYYY-MM-DD').format('dddd') as IWeeklyCalendar['days'][0]['dayOfWeek'];
+  const dayOfWeek = m.format('dddd') as IWeeklyCalendar['days'][0]['dayOfWeek'];
   return week.days.find((d) => d.dayOfWeek === dayOfWeek) ?? null;
 }
 
@@ -77,10 +84,13 @@ function compressSlotsForService(slots: string[], serviceMin: number, slotStepMi
 }
 
 /** Find the slotDuration for the selected date from calendar settings */
-function getSlotDurationForDate(settings: ICalendarSettings[], date: string): number {
-  const dow = moment(date, 'YYYY-MM-DD').format('dddd');
+function getSlotDurationForDate(settings: ICalendarSettings[], date: string, timezone?: string): number {
+  const zone = timezone && moment.tz.zone(timezone) ? timezone : undefined;
+  const dow = zone
+    ? moment.tz(date, 'YYYY-MM-DD', zone).format('dddd')
+    : moment(date, 'YYYY-MM-DD').format('dddd');
   const s = settings.find(x => x.dayOfWeek === dow);
-  return s?.slotDuration ?? 30;
+  return s?.slotDuration ?? 35;
 }
 
 export default function BookAppointment() {
@@ -88,12 +98,14 @@ export default function BookAppointment() {
 
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const addGuestPulseTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Data from API ---
   const [services, setServices] = useState<IService[]>([]);
   const [calendarSettings, setCalendarSettings] = useState<ICalendarSettings[]>([]);
   const [availableDates, setAvailableDates] = useState<AvailableDate[]>([]);
   const [weeklySchedules, setWeeklySchedules] = useState<IWeeklyCalendar[]>([]);
+  const [businessTimezone, setBusinessTimezone] = useState<string>(moment.tz.guess());
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(true);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
@@ -115,6 +127,7 @@ export default function BookAppointment() {
   const [queueRequestedDate, setQueueRequestedDate] = useState<string | null>(null);
   const [queueJoined, setQueueJoined] = useState(false);
   const [isJoiningQueue, setIsJoiningQueue] = useState(false);
+  const [addGuestPulse, setAddGuestPulse] = useState(false);
 
   const usedTimesList = useMemo(() => {
     const list = guestEntries.map((guest) => guest.time).filter(Boolean);
@@ -125,6 +138,17 @@ export default function BookAppointment() {
   }, [guestEntries, formData.time]);
 
   const usedTimesSet = useMemo(() => new Set(usedTimesList), [usedTimesList]);
+
+  const resolvedTimezone = useMemo(
+    () => (businessTimezone && moment.tz.zone(businessTimezone) ? businessTimezone : moment.tz.guess()),
+    [businessTimezone]
+  );
+
+  const formatDateInTimezone = useCallback(
+    (dateStr: string, fmt: string) =>
+      dateStr ? moment.tz(dateStr, 'YYYY-MM-DD', resolvedTimezone).format(fmt) : '',
+    [resolvedTimezone]
+  );
 
   const remainingSlotsForNewGuest = useMemo(
     () => timeSlots.filter((slot) => !usedTimesSet.has(slot)),
@@ -143,7 +167,7 @@ export default function BookAppointment() {
   useEffect(() => {
     if (!canAddGuest && guestEntries.length > 0) {
       setGuestEntries([]);
-      toast('Only one slot remains for the selected day; additional guests were removed.');
+      toast('Only one slot remains for the selected day; extra bookings were removed.');
     }
   }, [canAddGuest, guestEntries.length]);
 
@@ -171,7 +195,7 @@ export default function BookAppointment() {
 
       const rawSlots = await getAvailability(targetDate, { serviceId });
       const selectedService = services.find((svc) => svc._id === serviceId);
-      const slotStep = getSlotDurationForDate(calendarSettings, targetDate);
+      const slotStep = getSlotDurationForDate(calendarSettings, targetDate, resolvedTimezone);
       const compressedSlots = compressSlotsForService(
         rawSlots,
         selectedService?.duration ?? 0,
@@ -205,15 +229,21 @@ export default function BookAppointment() {
     const fetchInitialData = async () => {
       try {
         setIsLoadingServices(true);
-        const [servicesResponse, settingsResponse] = await Promise.all([
+        const [servicesResponse, settingsResponse, weeklyData, timezoneResponse] = await Promise.all([
           getAllServices(),
           getCalendarSettings(),
+          getWeeklyCalendar(4),
+          getCalendarTimezone().catch(() => ({ timezone: moment.tz.guess() })),
         ]);
-        const weeklyData = await getWeeklyCalendar(4);
+        const tzValue =
+          timezoneResponse?.timezone && moment.tz.zone(timezoneResponse.timezone)
+            ? timezoneResponse.timezone
+            : moment.tz.guess();
+        setBusinessTimezone(tzValue);
         setServices(servicesResponse);
         setCalendarSettings(settingsResponse); // store settings so we can read slotDuration for the chosen date
         setWeeklySchedules(weeklyData);
-        generateAvailableDates(settingsResponse, weeklyData);
+        generateAvailableDates(settingsResponse, weeklyData, tzValue);
       } catch (error) {
         toast.error('Failed to load initial booking data. Please try again.');
         console.error('Error fetching initial data:', error);
@@ -226,9 +256,9 @@ export default function BookAppointment() {
 
   useEffect(() => {
     if (calendarSettings.length > 0 && weeklySchedules.length > 0) {
-      generateAvailableDates(calendarSettings, weeklySchedules);
+      generateAvailableDates(calendarSettings, weeklySchedules, resolvedTimezone);
     }
-  }, [calendarSettings, weeklySchedules]);
+  }, [calendarSettings, weeklySchedules, resolvedTimezone]);
 
   // --- Refetch availability when date or service changes (service-aware) ---
   useEffect(() => {
@@ -241,7 +271,7 @@ export default function BookAppointment() {
       setLoading: setIsLoadingAvailability,
       setAlt: setAltSuggestions,
       resetTime: () => setFormData((prev) => ({ ...prev, time: '' })),
-      errorMessage: `Failed to load slots for ${moment(formData.date).format('MMMM D')}.`,
+      errorMessage: `Failed to load slots for ${formatDateInTimezone(formData.date, 'MMMM D')}.`,
     });
     // include calendarSettings & services so compression stays in sync
   }, [formData.date, formData.serviceId, calendarSettings, services]);
@@ -261,6 +291,14 @@ export default function BookAppointment() {
     setGuestEntries([]);
   }, [formData.date, formData.serviceId]);
 
+  useEffect(() => {
+    return () => {
+      if (addGuestPulseTimeout.current) {
+        clearTimeout(addGuestPulseTimeout.current);
+      }
+    };
+  }, []);
+
   // --- Scroll to top whenever step changes ---
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -279,8 +317,10 @@ export default function BookAppointment() {
   // --- Helper Functions ---
   const generateAvailableDates = (
     settings: ICalendarSettings[],
-    weekly: IWeeklyCalendar[]
+    weekly: IWeeklyCalendar[],
+    timezone?: string
   ) => {
+    const zone = timezone && moment.tz.zone(timezone) ? timezone : moment.tz.guess();
     const enabledDays = settings
       .filter(day => day.isEnabled)
       .map(day => day.dayOfWeek);
@@ -293,20 +333,21 @@ export default function BookAppointment() {
     const enabledDayIndexes = enabledDays.map(dayName => dayNameToIndex[dayName]);
 
     const dates: AvailableDate[] = [];
-    const today = moment();
+    const today = moment.tz(zone);
+    const tomorrow = today.clone().add(1, 'day');
     let count = 0;
 
     for (let i = 0; count < 14 && i < 30; i++) {
       const date = today.clone().add(i, 'days');
-      const weeklyDay = findWeeklyDay(date.format('YYYY-MM-DD'), weekly);
+      const weeklyDay = findWeeklyDay(date.format('YYYY-MM-DD'), weekly, zone);
       if (weeklyDay && !weeklyDay.isEnabled) continue;
       if (enabledDayIndexes.includes(date.day())) {
         dates.push({
           date: date.format('YYYY-MM-DD'),
           display: date.format('MMM DD'),
           dayName: date.format('ddd'),
-          isToday: date.isSame(moment(), 'day'),
-          isTomorrow: date.isSame(moment().add(1, 'day'), 'day'),
+          isToday: date.isSame(today, 'day'),
+          isTomorrow: date.isSame(tomorrow, 'day'),
           isDisabled: weeklyDay ? !weeklyDay.isEnabled : false,
         });
         count++;
@@ -371,6 +412,11 @@ export default function BookAppointment() {
         time: formData.time || '',
       },
     ]);
+    setAddGuestPulse(true);
+    if (addGuestPulseTimeout.current) {
+      clearTimeout(addGuestPulseTimeout.current);
+    }
+    addGuestPulseTimeout.current = setTimeout(() => setAddGuestPulse(false), 200);
   };
 
   const updateGuestEntry = (index: number, data: Partial<GuestEntry>) => {
@@ -478,7 +524,7 @@ export default function BookAppointment() {
         toast.error(msg);
 
         const selectedService = services.find((s) => s._id === formData.serviceId);
-        const slotStep = getSlotDurationForDate(calendarSettings, formData.date);
+        const slotStep = getSlotDurationForDate(calendarSettings, formData.date, resolvedTimezone);
         const compressed = compressSlotsForService(
           error?.suggestions || [],
           selectedService?.duration ?? 0,
@@ -588,7 +634,7 @@ export default function BookAppointment() {
                   </div>
                   {confirmedBooking.additionalGuests && confirmedBooking.additionalGuests.length > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-300">Additional Guest:</span>
+                      <span className="text-gray-300">Additional Booking(s):</span>
                       <span className="text-white font-medium">
                         {confirmedBooking.additionalGuests.map((guest) => `${guest.firstName} ${guest.lastName}`).join(', ')}
                       </span>
@@ -798,7 +844,7 @@ export default function BookAppointment() {
                         ) : (
                           <div className="space-y-4">
                             <Label className="text-white text-base lg:text-lg font-semibold mb-4 block">Select Time</Label>
-                            <p className="text-xs text-gray-400 mt-0 mb-3">Time slots are spaced 35 minutes apart to give each guest a fresh start.</p>
+                            <p className="text-xs text-gray-400 mt-0 mb-3">Time slots are spaced 35 minutes apart so each booking gets a fresh start.</p>
                             {timeSlots.length > 0 ? (
                               <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                                 {mainTimeOptions.map((time) => (
@@ -938,23 +984,13 @@ export default function BookAppointment() {
                               placeholder="Enter your email address"
                             />
                           </div>
-                          <div>
-                            <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
-                            <Textarea
-                              id="notes"
-                              value={formData.notes}
-                              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                              placeholder="Any special requests or notes for your barber..."
-                              className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
-                            />
-                          </div>
 
                           <div className="bg-gray-700 border border-gray-600 rounded-lg p-4 space-y-4">
                             <div className="flex items-center justify-between gap-4">
                               <div>
-                                <p className="text-white font-medium">Additional guests</p>
+                                <p className="text-white font-medium">Multiple bookings</p>
                                 <p className="text-sm text-gray-400">
-                                  Add as many guests as you like; each picks a service and time.
+                                  Add extra bookings so everyone picks their own service and time.
                                 </p>
                               </div>
                               <Button
@@ -962,13 +998,16 @@ export default function BookAppointment() {
                                 variant="outline"
                                 onClick={addGuestEntry}
                                 disabled={!canAddGuest}
+                                className={`transition-transform duration-150 ${
+                                  addGuestPulse ? 'scale-95 ring-2 ring-white ring-offset-2 ring-offset-gray-800' : ''
+                                }`}
                               >
-                                Add guest
+                                Add booking
                               </Button>
                             </div>
                             {!canAddGuest && guestEntries.length > 0 && (
                               <p className="text-xs text-amber-300">
-                                Only one slot remains on this day, so no new guests can be added.
+                                Only one slot remains on this day, so no more bookings can be added.
                               </p>
                             )}
                             <div className="space-y-4">
@@ -978,7 +1017,7 @@ export default function BookAppointment() {
                                   className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3"
                                 >
                                   <div className="flex items-center justify-between">
-                                    <p className="text-white font-medium">Guest {index + 1}</p>
+                                    <p className="text-white font-medium">Additional booking {index + 1}</p>
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -1065,6 +1104,17 @@ export default function BookAppointment() {
                                 </div>
                               ))}
                             </div>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="notes" className="text-white font-medium">Special Requests (Optional)</Label>
+                            <Textarea
+                              id="notes"
+                              value={formData.notes}
+                              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                              placeholder="Any special requests or notes for your barber..."
+                              className="mt-2 bg-gray-700 border-gray-600 text-white min-h-[100px]"
+                            />
                           </div>
 
                           {/* Payment Option — make the ENTIRE card clickable */}

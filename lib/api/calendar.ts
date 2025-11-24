@@ -36,6 +36,11 @@ export interface IWeeklyCalendar {
   slotDuration: number;
 }
 
+export async function getCalendarTimezone(): Promise<{ timezone: string }> {
+  const response = await apiClient.get<{ timezone: string }>('/calendar/timezone');
+  return response.data;
+}
+
 export async function getCalendarSettings(): Promise<ICalendarSettings[]> {
   const response = await apiClient.get<ICalendarSettings[]>('/calendar/settings');
   return response.data;

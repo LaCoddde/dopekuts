@@ -19,6 +19,7 @@ import {
   CircleAlert as AlertCircle,
   PlusCircle,
   Pencil,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -27,6 +28,7 @@ import {
   cancelBookingAdmin,
   updateBookingAdmin,
   IBooking,
+  sendBookingMessage,
 } from '@/lib/api/booking';
 import {
   Dialog,
@@ -146,6 +148,12 @@ export default function BookingManagement() {
   const [noteModalBooking, setNoteModalBooking] = useState<IBooking | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [messageModal, setMessageModal] = useState<{ open: boolean; booking: IBooking | null; message: string }>({
+    open: false,
+    booking: null,
+    message: '',
+  });
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   // Filters & sort
   const [searchTerm, setSearchTerm] = useState('');
@@ -283,6 +291,30 @@ export default function BookingManagement() {
       toast.error('Unable to save the cancellation note.');
     } finally {
       setIsSavingNote(false);
+    }
+  };
+
+  const openMessageModal = (booking: IBooking) => {
+    setMessageModal({ open: true, booking, message: '' });
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageModal.booking) return;
+    const body = messageModal.message.trim();
+    if (!body) {
+      toast.error('Enter a message to send.');
+      return;
+    }
+    setIsSendingMessage(true);
+    try {
+      await sendBookingMessage(messageModal.booking._id, body);
+      toast.success('Message sent.');
+      setMessageModal({ open: false, booking: null, message: '' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to send message.';
+      toast.error(msg);
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -585,9 +617,18 @@ export default function BookingManagement() {
                               })}{' '}
                               ({booking.duration}min)
                             </div>
-                            <div className="flex items-center text-gray-300">
-                              <Phone className="h-4 w-4 mr-2" />
-                              {booking.phone}
+                            <div className="flex items-center text-gray-300 gap-2">
+                              <Phone className="h-4 w-4" />
+                              <span className="truncate">{booking.phone}</span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-blue-300 bg-blue-700 hover:text-white hover:bg-blue-700/50"
+                                onClick={() => openMessageModal(booking)}
+                                title="Send message"
+                              >
+                                <MessageSquare className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                           {booking.notes && (
@@ -765,6 +806,46 @@ export default function BookingManagement() {
             </Button>
             <Button onClick={handleSaveNote} disabled={isSavingNote}>
               {isSavingNote ? 'Saving...' : 'Save note'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={messageModal.open}
+        onOpenChange={(open) => {
+          if (!open) setMessageModal({ open: false, booking: null, message: '' });
+        }}
+      >
+        <DialogContent className="bg-gray-900 text-white border border-gray-700">
+          <DialogHeader>
+            <DialogTitle>Send message</DialogTitle>
+            <DialogDescription>
+              {messageModal.booking
+                ? `Send a quick SMS to ${messageModal.booking.firstName} ${messageModal.booking.lastName} (${messageModal.booking.phone}).`
+                : 'Send a quick message to this customer.'}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={messageModal.message}
+            onChange={(e) => setMessageModal((prev) => ({ ...prev, message: e.target.value }))}
+            placeholder="Type your message..."
+            className="min-h-[120px] bg-gray-800 border border-gray-700 text-white"
+          />
+          <DialogFooter className="mt-4 gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setMessageModal({ open: false, booking: null, message: '' })}
+              disabled={isSendingMessage}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendMessage}
+              disabled={isSendingMessage}
+              className="bg-blue-600 hover:bg-blue-500 text-white"
+            >
+              {isSendingMessage ? 'Sending...' : 'Send'}
             </Button>
           </DialogFooter>
         </DialogContent>
